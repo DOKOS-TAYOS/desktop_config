@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SunSetup Planner Editor</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5efe4;
+        --panel: #fffdf8;
+        --grid: #e2d6c1;
+        --text: #233127;
+        --muted: #6b7468;
+        --room: #24372b;
+        --window: #4fa4c2;
+        --desk: #b8402a;
+        --desk-fill: rgba(184, 64, 42, 0.14);
+        --monitor: #1f6b52;
+        --monitor-fill: rgba(31, 107, 82, 0.16);
+        --handle: #d18c21;
+        --selection: #f0d17b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        background: linear-gradient(180deg, #f6f1e7 0%, #efe4d3 100%);
+        color: var(--text);
+      }
+
+      .shell {
+        padding: 14px;
+      }
+
+      .frame {
+        background: var(--panel);
+        border: 1px solid rgba(36, 55, 43, 0.12);
+        border-radius: 18px;
+        box-shadow: 0 16px 36px rgba(36, 55, 43, 0.08);
+        overflow: hidden;
+      }
+
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px 10px;
+        border-bottom: 1px solid rgba(36, 55, 43, 0.08);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 243, 235, 0.96));
+      }
+
+      .toolbar h3 {
+        margin: 0 0 4px;
+        font-size: 16px;
+      }
+
+      .toolbar p,
+      .legend {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .legend {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+
+      .scene-wrap {
+        padding: 12px;
+      }
+
+      svg {
+        display: block;
+        width: 100%;
+        height: 430px;
+        touch-action: none;
+        user-select: none;
+      }
+
+      .hint {
+        padding: 0 16px 14px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .selectable {
+        cursor: pointer;
+      }
+
+      .dragging {
+        cursor: grabbing;
+      }
+
+      .label {
+        font-size: 12px;
+        fill: var(--text);
+        font-weight: 600;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="frame">
+        <div class="toolbar">
+          <div>
+            <h3>Editor 2D interactivo</h3>
+            <p>Mueve escritorio y monitor, gira con el asa circular y desliza la ventana sobre su pared.</p>
+          </div>
+          <div class="legend">
+            <span><i class="dot" style="background:#4fa4c2"></i>Ventana</span>
+            <span><i class="dot" style="background:#b8402a"></i>Escritorio</span>
+            <span><i class="dot" style="background:#1f6b52"></i>Monitor</span>
+            <span><i class="dot" style="background:#d18c21"></i>Asa de giro</span>
+          </div>
+        </div>
+        <div class="scene-wrap">
+          <svg id="scene" viewBox="0 0 900 430" aria-label="Plano editable"></svg>
+        </div>
+        <div class="hint" id="hint">
+          La simulacion solo se recalcula al terminar el gesto.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const svg = document.getElementById("scene");
+      const hint = document.getElementById("hint");
+      const state = {
+        scene: null,
+        args: null,
+        eventSeq: 0,
+        drag: null,
+        view: {
+          width: 900,
+          height: 430,
+          padding: 30,
+          scale: 1,
+        },
+      };
+
+      function postMessageToStreamlit(payload) {
+        window.parent.postMessage(
+          {
+            isStreamlitMessage: true,
+            ...payload,
+          },
+          "*"
+        );
+      }
+
+      function notifyReady() {
+        postMessageToStreamlit({
+          type: "streamlit:componentReady",
+          apiVersion: 1,
+        });
+      }
+
+      function setFrameHeight(height) {
+        postMessageToStreamlit({
+          type: "streamlit:setFrameHeight",
+          height,
+        });
+      }
+
+      function sendValue(payload) {
+        postMessageToStreamlit({
+          type: "streamlit:setComponentValue",
+          value: payload,
+        });
+      }
+
+      function clone(value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function normalizeAngle(angle) {
+        return ((angle % 360) + 360) % 360;
+      }
+
+      function snapAngle(angle) {
+        return normalizeAngle(Math.round(angle / 15) * 15);
+      }
+
+      function compassVector(angle) {
+        const rad = (angle * Math.PI) / 180;
+        return {
+          x: Math.sin(rad),
+          y: Math.cos(rad),
+        };
+      }
+
+      function rotateLocal(localX, localY, angle) {
+        const rad = (angle * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        return {
+          x: localX * cos + localY * sin,
+          y: -localX * sin + localY * cos,
+        };
+      }
+
+      function worldToLocal(point, center, angle) {
+        return rotateLocal(point.x - center.x, point.y - center.y, -angle);
+      }
+
+      function localToWorld(local, center, angle) {
+        const rotated = rotateLocal(local.x, local.y, angle);
+        return {
+          x: center.x + rotated.x,
+          y: center.y + rotated.y,
+        };
+      }
+
+      function rectangleHalfExtents(width, depth, angle) {
+        const rad = (angle * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(rad));
+        const sin = Math.abs(Math.sin(rad));
+        return {
+          x: (width * cos + depth * sin) / 2,
+          y: (width * sin + depth * cos) / 2,
+        };
+      }
+
+      function rectangleCorners(element) {
+        const halfW = element.width_m / 2;
+        const halfD = element.depth_m / 2;
+        const center = { x: element.x_m, y: element.y_m };
+        return [
+          localToWorld({ x: -halfW, y: -halfD }, center, element.orientation_deg),
+          localToWorld({ x: halfW, y: -halfD }, center, element.orientation_deg),
+          localToWorld({ x: halfW, y: halfD }, center, element.orientation_deg),
+          localToWorld({ x: -halfW, y: halfD }, center, element.orientation_deg),
+        ];
+      }
+
+      function updateView() {
+        const bounds = svg.getBoundingClientRect();
+        state.view.width = Math.max(bounds.width, 900);
+        state.view.height = 430;
+        const room = state.scene;
+        const scaleX = (state.view.width - state.view.padding * 2) / room.room_width_m;
+        const scaleY = (state.view.height - state.view.padding * 2) / room.room_depth_m;
+        state.view.scale = Math.min(scaleX, scaleY);
+        svg.setAttribute("viewBox", `0 0 ${state.view.width} ${state.view.height}`);
+      }
+
+      function worldToScreen(point) {
+        return {
+          x: state.view.padding + point.x * state.view.scale,
+          y: state.view.height - state.view.padding - point.y * state.view.scale,
+        };
+      }
+
+      function screenToWorld(clientX, clientY) {
+        const bounds = svg.getBoundingClientRect();
+        const screenX = ((clientX - bounds.left) / bounds.width) * state.view.width;
+        const screenY = ((clientY - bounds.top) / bounds.height) * state.view.height;
+        return {
+          x: (screenX - state.view.padding) / state.view.scale,
+          y: (state.view.height - state.view.padding - screenY) / state.view.scale,
+        };
+      }
+
+      function linePath(points) {
+        return points
+          .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+          .join(" ");
+      }
+
+      function createSvg(tag, attrs = {}) {
+        const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+        return node;
+      }
+
+      function clearSvg() {
+        while (svg.firstChild) {
+          svg.removeChild(svg.firstChild);
+        }
+      }
+
+      function selectionStroke(kind) {
+        return state.scene.selected_element === kind ? "#f0d17b" : "transparent";
+      }
+
+      function windowEndpoints(windowElement) {
+        const wall = (windowElement.metadata || {}).wall || "west";
+        const halfWidth = windowElement.width_m / 2;
+        if (wall === "north" || wall === "south") {
+          return [
+            { x: windowElement.x_m - halfWidth, y: windowElement.y_m },
+            { x: windowElement.x_m + halfWidth, y: windowElement.y_m },
+          ];
+        }
+        return [
+          { x: windowElement.x_m, y: windowElement.y_m - halfWidth },
+          { x: windowElement.x_m, y: windowElement.y_m + halfWidth },
+        ];
+      }
+
+      function rotationHandlePoint(element, offset) {
+        const direction = compassVector(element.orientation_deg);
+        return {
+          x: element.x_m + direction.x * offset,
+          y: element.y_m + direction.y * offset,
+        };
+      }
+
+      function setHint(text) {
+        hint.textContent = text;
+      }
+
+      function drawScene() {
+        clearSvg();
+        updateView();
+
+        const roomOutline = [
+          { x: 0, y: 0 },
+          { x: state.scene.room_width_m, y: 0 },
+          { x: state.scene.room_width_m, y: state.scene.room_depth_m },
+          { x: 0, y: state.scene.room_depth_m },
+          { x: 0, y: 0 },
+        ].map(worldToScreen);
+
+        const grid = createSvg("g", { opacity: "0.9" });
+        for (let x = 0.5; x < state.scene.room_width_m; x += 0.5) {
+          const from = worldToScreen({ x, y: 0 });
+          const to = worldToScreen({ x, y: state.scene.room_depth_m });
+          grid.appendChild(
+            createSvg("line", {
+              x1: from.x,
+              y1: from.y,
+              x2: to.x,
+              y2: to.y,
+              stroke: "#e2d6c1",
+              "stroke-width": "1",
+            })
+          );
+        }
+        for (let y = 0.5; y < state.scene.room_depth_m; y += 0.5) {
+          const from = worldToScreen({ x: 0, y });
+          const to = worldToScreen({ x: state.scene.room_width_m, y });
+          grid.appendChild(
+            createSvg("line", {
+              x1: from.x,
+              y1: from.y,
+              x2: to.x,
+              y2: to.y,
+              stroke: "#e2d6c1",
+              "stroke-width": "1",
+            })
+          );
+        }
+        svg.appendChild(grid);
+
+        svg.appendChild(
+          createSvg("path", {
+            d: linePath(roomOutline),
+            fill: "none",
+            stroke: "#24372b",
+            "stroke-width": "4",
+            "stroke-linejoin": "round",
+          })
+        );
+
+        drawWindow();
+        drawDesk();
+        drawMonitor();
+      }
+
+      function drawWindow() {
+        const windowElement = state.scene.elements.window;
+        const [startWorld, endWorld] = windowEndpoints(windowElement);
+        const start = worldToScreen(startWorld);
+        const end = worldToScreen(endWorld);
+        const center = worldToScreen({ x: windowElement.x_m, y: windowElement.y_m });
+
+        const group = createSvg("g", {
+          class: "selectable",
+          "data-target": "window",
+          "data-action": "translate",
+        });
+        group.appendChild(
+          createSvg("line", {
+            x1: start.x,
+            y1: start.y,
+            x2: end.x,
+            y2: end.y,
+            stroke: "#4fa4c2",
+            "stroke-width": "10",
+            "stroke-linecap": "round",
+          })
+        );
+        group.appendChild(
+          createSvg("circle", {
+            cx: center.x,
+            cy: center.y,
+            r: "7",
+            fill: "#fffdf8",
+            stroke: selectionStroke("window"),
+            "stroke-width": "4",
+          })
+        );
+        svg.appendChild(group);
+
+        const resizeHandle = createSvg("circle", {
+          cx: end.x,
+          cy: end.y,
+          r: "9",
+          fill: "#fffdf8",
+          stroke: "#4fa4c2",
+          "stroke-width": "3",
+          class: "selectable",
+          "data-target": "window",
+          "data-action": "resize",
+        });
+        svg.appendChild(resizeHandle);
+
+        const label = createSvg("text", {
+          x: center.x + 12,
+          y: center.y - 12,
+          class: "label",
+        });
+        label.textContent = "Ventana";
+        svg.appendChild(label);
+      }
+
+      function drawDesk() {
+        const desk = state.scene.elements.desk;
+        const corners = rectangleCorners(desk).map(worldToScreen);
+        const handle = worldToScreen(rotationHandlePoint(desk, desk.depth_m / 2 + 0.35));
+        const center = worldToScreen({ x: desk.x_m, y: desk.y_m });
+
+        const polygon = createSvg("path", {
+          d: `${linePath([...corners, corners[0]])} Z`,
+          fill: "rgba(184, 64, 42, 0.14)",
+          stroke: "#b8402a",
+          "stroke-width": "3",
+          "stroke-linejoin": "round",
+          class: "selectable",
+          "data-target": "desk",
+          "data-action": "translate",
+        });
+        if (state.scene.selected_element === "desk") {
+          polygon.setAttribute("filter", "drop-shadow(0 0 6px rgba(240, 209, 123, 0.55))");
+        }
+        svg.appendChild(polygon);
+        svg.appendChild(
+          createSvg("circle", {
+            cx: center.x,
+            cy: center.y,
+            r: "6",
+            fill: "#fffdf8",
+            stroke: selectionStroke("desk"),
+            "stroke-width": "4",
+          })
+        );
+        svg.appendChild(
+          createSvg("line", {
+            x1: center.x,
+            y1: center.y,
+            x2: handle.x,
+            y2: handle.y,
+            stroke: "#d18c21",
+            "stroke-width": "2.5",
+            "stroke-dasharray": "4 4",
+          })
+        );
+        svg.appendChild(
+          createSvg("circle", {
+            cx: handle.x,
+            cy: handle.y,
+            r: "9",
+            fill: "#fffdf8",
+            stroke: "#d18c21",
+            "stroke-width": "3",
+            class: "selectable",
+            "data-target": "desk",
+            "data-action": "rotate",
+          })
+        );
+
+        const label = createSvg("text", {
+          x: center.x + 12,
+          y: center.y - 12,
+          class: "label",
+        });
+        label.textContent = "Escritorio";
+        svg.appendChild(label);
+      }
+
+      function drawMonitor() {
+        const monitor = state.scene.elements.monitor;
+        const corners = rectangleCorners(monitor).map(worldToScreen);
+        const handle = worldToScreen(rotationHandlePoint(monitor, monitor.depth_m / 2 + 0.22));
+        const center = worldToScreen({ x: monitor.x_m, y: monitor.y_m });
+
+        const polygon = createSvg("path", {
+          d: `${linePath([...corners, corners[0]])} Z`,
+          fill: "rgba(31, 107, 82, 0.16)",
+          stroke: "#1f6b52",
+          "stroke-width": "3",
+          "stroke-linejoin": "round",
+          class: "selectable",
+          "data-target": "monitor",
+          "data-action": "translate",
+        });
+        if (state.scene.selected_element === "monitor") {
+          polygon.setAttribute("filter", "drop-shadow(0 0 6px rgba(240, 209, 123, 0.55))");
+        }
+        svg.appendChild(polygon);
+        svg.appendChild(
+          createSvg("circle", {
+            cx: center.x,
+            cy: center.y,
+            r: "5",
+            fill: "#fffdf8",
+            stroke: selectionStroke("monitor"),
+            "stroke-width": "4",
+          })
+        );
+        svg.appendChild(
+          createSvg("line", {
+            x1: center.x,
+            y1: center.y,
+            x2: handle.x,
+            y2: handle.y,
+            stroke: "#d18c21",
+            "stroke-width": "2",
+            "stroke-dasharray": "3 3",
+          })
+        );
+        svg.appendChild(
+          createSvg("circle", {
+            cx: handle.x,
+            cy: handle.y,
+            r: "8",
+            fill: "#fffdf8",
+            stroke: "#d18c21",
+            "stroke-width": "3",
+            class: "selectable",
+            "data-target": "monitor",
+            "data-action": "rotate",
+          })
+        );
+
+        const label = createSvg("text", {
+          x: center.x + 12,
+          y: center.y + 18,
+          class: "label",
+        });
+        label.textContent = "Monitor";
+        svg.appendChild(label);
+      }
+
+      function clampDeskCenter(scene, desk, center) {
+        const extents = rectangleHalfExtents(desk.width_m, desk.depth_m, desk.orientation_deg);
+        return {
+          x: clamp(center.x, extents.x, scene.room_width_m - extents.x),
+          y: clamp(center.y, extents.y, scene.room_depth_m - extents.y),
+        };
+      }
+
+      function moveMonitorWithinDesk(monitor, desk) {
+        const local = worldToLocal({ x: monitor.x_m, y: monitor.y_m }, { x: desk.x_m, y: desk.y_m }, desk.orientation_deg);
+        const maxX = Math.max(desk.width_m / 2 - 0.03, 0);
+        const maxY = Math.max(desk.depth_m / 2 - 0.03, 0);
+        const clampedLocal = {
+          x: clamp(local.x, -maxX, maxX),
+          y: clamp(local.y, -maxY, maxY),
+        };
+        const world = localToWorld(clampedLocal, { x: desk.x_m, y: desk.y_m }, desk.orientation_deg);
+        monitor.x_m = world.x;
+        monitor.y_m = world.y;
+        return monitor;
+      }
+
+      function translateWindow(scene, drag, pointer) {
+        const windowElement = scene.elements.window;
+        const metadata = windowElement.metadata || {};
+        const wall = metadata.wall || "west";
+        const wallSpan = Number(metadata.wall_span_m || scene.room_depth_m);
+        const axisStart = wall === "north" || wall === "south" ? drag.startScene.elements.window.x_m : drag.startScene.elements.window.y_m;
+        const deltaAxis =
+          wall === "north" || wall === "south"
+            ? pointer.x - drag.startPointer.x
+            : pointer.y - drag.startPointer.y;
+        const clampedAxis = clamp(axisStart + deltaAxis, windowElement.width_m / 2, wallSpan - windowElement.width_m / 2);
+        const centerRatio = clampedAxis / Math.max(wallSpan, 0.0001);
+        windowElement.metadata.center_ratio = centerRatio;
+        if (wall === "north") {
+          windowElement.x_m = clampedAxis;
+          windowElement.y_m = scene.room_depth_m;
+        } else if (wall === "south") {
+          windowElement.x_m = clampedAxis;
+          windowElement.y_m = 0;
+        } else if (wall === "east") {
+          windowElement.x_m = scene.room_width_m;
+          windowElement.y_m = clampedAxis;
+        } else {
+          windowElement.x_m = 0;
+          windowElement.y_m = clampedAxis;
+        }
+      }
+
+      function resizeWindow(scene, drag, pointer) {
+        const windowElement = scene.elements.window;
+        const metadata = windowElement.metadata || {};
+        const wall = metadata.wall || "west";
+        const wallSpan = Number(metadata.wall_span_m || scene.room_depth_m);
+        const centerAxis = wall === "north" || wall === "south" ? windowElement.x_m : windowElement.y_m;
+        const pointerAxis = wall === "north" || wall === "south" ? pointer.x : pointer.y;
+        const maxWidth = Math.max(Math.min(centerAxis, wallSpan - centerAxis) * 2, 0.6);
+        windowElement.width_m = clamp(Math.abs(pointerAxis - centerAxis) * 2, 0.6, maxWidth);
+      }
+
+      function translateDesk(scene, drag, pointer) {
+        const desk = scene.elements.desk;
+        const monitor = scene.elements.monitor;
+        const deltaX = pointer.x - drag.startPointer.x;
+        const deltaY = pointer.y - drag.startPointer.y;
+        const proposedCenter = {
+          x: drag.startScene.elements.desk.x_m + deltaX,
+          y: drag.startScene.elements.desk.y_m + deltaY,
+        };
+        const clampedCenter = clampDeskCenter(scene, desk, proposedCenter);
+        const actualDx = clampedCenter.x - drag.startScene.elements.desk.x_m;
+        const actualDy = clampedCenter.y - drag.startScene.elements.desk.y_m;
+        desk.x_m = clampedCenter.x;
+        desk.y_m = clampedCenter.y;
+        monitor.x_m = drag.startScene.elements.monitor.x_m + actualDx;
+        monitor.y_m = drag.startScene.elements.monitor.y_m + actualDy;
+        moveMonitorWithinDesk(monitor, desk);
+      }
+
+      function pointerCompassAngle(point, center) {
+        const dx = point.x - center.x;
+        const dy = point.y - center.y;
+        return normalizeAngle((Math.atan2(dx, dy) * 180) / Math.PI);
+      }
+
+      function rotateDesk(scene, drag, pointer) {
+        const desk = scene.elements.desk;
+        const monitor = scene.elements.monitor;
+        const startDesk = drag.startScene.elements.desk;
+        const startMonitor = drag.startScene.elements.monitor;
+        const center = { x: startDesk.x_m, y: startDesk.y_m };
+        const startAngle = drag.startAngleDeg;
+        const currentAngle = pointerCompassAngle(pointer, center);
+        let delta = currentAngle - startAngle;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+
+        desk.orientation_deg = snapAngle(startDesk.orientation_deg + delta);
+        const rotationDelta = desk.orientation_deg - startDesk.orientation_deg;
+
+        const deskCenter = clampDeskCenter(scene, desk, center);
+        desk.x_m = deskCenter.x;
+        desk.y_m = deskCenter.y;
+
+        const relative = {
+          x: startMonitor.x_m - center.x,
+          y: startMonitor.y_m - center.y,
+        };
+        const rotated = localToWorld(
+          rotateLocal(relative.x, relative.y, rotationDelta),
+          { x: desk.x_m, y: desk.y_m },
+          0
+        );
+        monitor.x_m = rotated.x;
+        monitor.y_m = rotated.y;
+        monitor.orientation_deg = snapAngle(startMonitor.orientation_deg + rotationDelta);
+        moveMonitorWithinDesk(monitor, desk);
+      }
+
+      function translateMonitor(scene, drag, pointer) {
+        const desk = scene.elements.desk;
+        const monitor = scene.elements.monitor;
+        monitor.x_m = drag.startScene.elements.monitor.x_m + (pointer.x - drag.startPointer.x);
+        monitor.y_m = drag.startScene.elements.monitor.y_m + (pointer.y - drag.startPointer.y);
+        moveMonitorWithinDesk(monitor, desk);
+      }
+
+      function rotateMonitor(scene, drag, pointer) {
+        const monitor = scene.elements.monitor;
+        const startMonitor = drag.startScene.elements.monitor;
+        const center = { x: startMonitor.x_m, y: startMonitor.y_m };
+        const startAngle = drag.startAngleDeg;
+        const currentAngle = pointerCompassAngle(pointer, center);
+        let delta = currentAngle - startAngle;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+        monitor.orientation_deg = snapAngle(startMonitor.orientation_deg + delta);
+      }
+
+      function applyDrag(pointer) {
+        const drag = state.drag;
+        if (!drag) return;
+        const nextScene = clone(drag.startScene);
+        nextScene.selected_element = drag.target;
+        nextScene.is_dirty = true;
+        nextScene.pending_preview = true;
+        nextScene.last_action = drag.action;
+
+        if (drag.target === "window" && drag.action === "translate") {
+          translateWindow(nextScene, drag, pointer);
+        } else if (drag.target === "window" && drag.action === "resize") {
+          resizeWindow(nextScene, drag, pointer);
+        } else if (drag.target === "desk" && drag.action === "translate") {
+          translateDesk(nextScene, drag, pointer);
+        } else if (drag.target === "desk" && drag.action === "rotate") {
+          rotateDesk(nextScene, drag, pointer);
+        } else if (drag.target === "monitor" && drag.action === "translate") {
+          translateMonitor(nextScene, drag, pointer);
+        } else if (drag.target === "monitor" && drag.action === "rotate") {
+          rotateMonitor(nextScene, drag, pointer);
+        }
+
+        state.scene = nextScene;
+        drawScene();
+      }
+
+      function commitDrag() {
+        if (!state.drag) return;
+        const action = state.drag.action;
+        state.scene.pending_preview = false;
+        state.scene.is_dirty = true;
+        state.scene.last_action = action;
+        state.scene.commit_version = Number(state.drag.startScene.commit_version || 0) + 1;
+        state.eventSeq += 1;
+        sendValue({
+          scene: state.scene,
+          event_seq: state.eventSeq,
+          status: "commit",
+        });
+        setHint("Analisis actualizado tras confirmar el gesto.");
+        state.drag = null;
+      }
+
+      function applyLocalSelection(target) {
+        if (!state.scene) {
+          return false;
+        }
+        if (state.scene.selected_element === target) {
+          return false;
+        }
+        state.scene.selected_element = target;
+        state.scene.last_action = "select";
+        state.scene.pending_preview = false;
+        state.scene.is_dirty = false;
+        drawScene();
+        return true;
+      }
+
+      function commitSelection() {
+        if (!state.scene) {
+          return;
+        }
+        state.eventSeq += 1;
+        sendValue({
+          scene: state.scene,
+          event_seq: state.eventSeq,
+          status: "select",
+        });
+      }
+
+      function handlePointerDown(event) {
+        const targetNode = event.target.closest("[data-target]");
+        if (!targetNode || !state.scene) {
+          return;
+        }
+        event.preventDefault();
+        const target = targetNode.getAttribute("data-target");
+        const action = targetNode.getAttribute("data-action");
+        const selectionChanged = applyLocalSelection(target);
+        const pointer = screenToWorld(event.clientX, event.clientY);
+        const drag = {
+          target,
+          action,
+          startPointer: pointer,
+          startScene: clone(state.scene),
+          moved: false,
+          selectionChanged,
+        };
+        if (action === "rotate") {
+          const element = drag.startScene.elements[target];
+          drag.startAngleDeg = pointerCompassAngle(pointer, { x: element.x_m, y: element.y_m });
+        }
+        state.drag = drag;
+        svg.classList.add("dragging");
+        setHint("Soltando el raton se recalcula la simulacion.");
+      }
+
+      function handlePointerMove(event) {
+        if (!state.drag) {
+          return;
+        }
+        event.preventDefault();
+        const pointer = screenToWorld(event.clientX, event.clientY);
+        const dx = pointer.x - state.drag.startPointer.x;
+        const dy = pointer.y - state.drag.startPointer.y;
+        if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+          state.drag.moved = true;
+        }
+        applyDrag(pointer);
+      }
+
+      function handlePointerUp() {
+        if (!state.drag) {
+          return;
+        }
+        svg.classList.remove("dragging");
+        if (state.drag.moved) {
+          commitDrag();
+        } else if (state.drag.selectionChanged) {
+          commitSelection();
+        }
+        state.drag = null;
+        drawScene();
+      }
+
+      function attachEvents() {
+        svg.addEventListener("pointerdown", handlePointerDown);
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("resize", () => {
+          if (state.scene) {
+            drawScene();
+          }
+          setFrameHeight(document.documentElement.scrollHeight);
+        });
+      }
+
+      function renderFromPython(data) {
+        const incomingScene = clone((data.args || {}).scene || null);
+        if (!incomingScene) {
+          return;
+        }
+        if (!state.drag) {
+          state.scene = incomingScene;
+        }
+        drawScene();
+        setFrameHeight(document.documentElement.scrollHeight);
+      }
+
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "streamlit:render") {
+          return;
+        }
+        state.args = event.data;
+        renderFromPython(event.data);
+      });
+
+      notifyReady();
+      attachEvents();
+      setFrameHeight(document.documentElement.scrollHeight);
+    </script>
+  </body>
+</html>
