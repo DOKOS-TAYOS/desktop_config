@@ -23,6 +23,7 @@ This project turns those tradeoffs into a simple, explainable planning tool.
 - Builds a recommended variant by testing small desk and monitor adjustments.
 - Shows a daily timeline, a 2D room plan, a comfort breakdown, a seasonal summary, and a current-vs-recommended comparison.
 - Uses Open-Meteo when forecast data is available and falls back to a theoretical clear-sky model when it is not.
+- Includes an in-app language switch so the public app can be used in Spanish or English.
 
 ## Main UX
 
@@ -30,6 +31,7 @@ This project turns those tradeoffs into a simple, explainable planning tool.
 - Users can drag the desk and monitor, rotate them with on-canvas handles, move the window along its wall, and resize the window width.
 - The sidebar is reserved for location, date, weather, presets, and advanced numeric fallback controls.
 - The analysis reruns when the gesture is committed, not on every drag frame.
+- The result charts are intentionally static to avoid confusing less technical users with zoom, pan, or toolbar controls.
 
 ## MVP scope
 
@@ -146,14 +148,23 @@ Weights used in the MVP:
 - Open-Meteo is optional and used opportunistically.
 - The app remains usable if weather lookups fail.
 - The interactive editor is a local Streamlit custom component shipped inside the repo.
+- The public UI supports both Spanish and English with an in-app language switch.
 
 ## Streamlit Community Cloud deployment
 
 1. Push this repo to GitHub.
 2. Create a new app in Streamlit Community Cloud.
-3. Select the repository and branch.
-4. Set `streamlit_app.py` as the entrypoint.
+3. Select the repository, branch, and `streamlit_app.py` as the entrypoint.
+4. In Advanced settings, choose the same Python version used locally. This project is verified with Python `3.12`.
 5. Deploy without secrets.
+6. If Open-Meteo is temporarily unavailable, the app will fall back to the theoretical clear-sky mode automatically.
+
+Deployment notes:
+
+- `requirements.txt` is already in the repository root, which is the expected location for this project layout.
+- `.streamlit/config.toml` is already in the repository root, which is the correct location for Streamlit app configuration.
+- No `packages.txt` is required for the current dependency set.
+- No secrets are required for the default public deployment.
 
 ## Limitations
 
@@ -179,24 +190,25 @@ See [assets/README.md](assets/README.md) for placeholder names to replace with r
 
 ---
 
-## Resumen en espanol
+## Resumen en español
 
-SunSetup Planner ayuda a decidir donde colocar mesa y monitor dentro de una habitacion para reducir reflejos en pantalla, calor solar directo y configuraciones incomodas respecto a la luz natural.
+SunSetup Planner ayuda a decidir dónde colocar mesa y monitor dentro de una habitación para reducir reflejos en pantalla, calor solar directo y configuraciones incómodas respecto a la luz natural.
 
-### Que incluye este MVP
+### Qué incluye este MVP
 
 - Entrada por ciudad o latitud/longitud.
 - Editor 2D para mover ventana, mesa y monitor.
-- Analisis detallado de un dia en intervalos de 15 minutos.
+- Análisis detallado de un día en intervalos de 15 minutos.
 - Resumen estacional simple.
-- Comparador entre configuracion actual y recomendada.
+- Comparador entre configuración actual y recomendada.
 - Plano 2D, timeline y recomendaciones accionables.
+- Selector visible de idioma entre español e inglés.
 
-### Lo importante sobre precision
+### Lo importante sobre la precisión
 
-No es una simulacion fisica exhaustiva. Es un modelo geometrico razonable, explicable y honesto para tomar mejores decisiones domesticas o de teletrabajo.
+No es una simulación física exhaustiva. Es un modelo geométrico razonable, explicable y honesto para tomar mejores decisiones domésticas o de teletrabajo.
 
-### Ejecucion rapida
+### Ejecución rápida
 
 ```bash
 pip install -r requirements.txt

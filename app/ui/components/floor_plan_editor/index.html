@@ -129,14 +129,14 @@
       <div class="frame">
         <div class="toolbar">
           <div>
-            <h3>Editor 2D interactivo</h3>
-            <p>Mueve, gira y redimensiona la habitación, la mesa y la ventana desde el propio plano.</p>
+            <h3 id="toolbar-title">Editor 2D interactivo</h3>
+            <p id="toolbar-subtitle">Mueve, gira y redimensiona la habitación, la mesa y la ventana desde el propio plano.</p>
           </div>
           <div class="legend">
-            <span><i class="dot" style="background:#67c5e7"></i>Ventana</span>
-            <span><i class="dot" style="background:#ff8e72"></i>Mesa</span>
-            <span><i class="dot" style="background:#7bd6bf"></i>Monitor</span>
-            <span><i class="dot" style="background:#f1bc62"></i>Asas de giro y tamaño</span>
+            <span><i class="dot" style="background:#67c5e7"></i><span id="legend-window">Ventana</span></span>
+            <span><i class="dot" style="background:#ff8e72"></i><span id="legend-desk">Mesa</span></span>
+            <span><i class="dot" style="background:#7bd6bf"></i><span id="legend-monitor">Monitor</span></span>
+            <span><i class="dot" style="background:#f1bc62"></i><span id="legend-handles">Asas de giro y tamaño</span></span>
           </div>
         </div>
         <div class="scene-wrap">
@@ -156,11 +156,45 @@
         args: null,
         eventSeq: 0,
         drag: null,
+        language: "es",
         view: {
           width: 900,
           height: 430,
           padding: 30,
           scale: 1,
+        },
+      };
+
+      const TRANSLATIONS = {
+        es: {
+          title: "Editor 2D interactivo",
+          subtitle: "Mueve, gira y redimensiona la habitación, la mesa y la ventana desde el propio plano.",
+          legendWindow: "Ventana",
+          legendDesk: "Mesa",
+          legendMonitor: "Monitor",
+          legendHandles: "Asas de giro y tamaño",
+          hint: "El análisis solo se recalcula al terminar el gesto.",
+          hintDragging: "Al soltar el ratón se recalcula la simulación.",
+          hintCommit: "Análisis actualizado tras confirmar el gesto.",
+          room: "Habitación",
+          desk: "Mesa",
+          monitor: "Monitor",
+          window: "Ventana",
+        },
+        en: {
+          title: "Interactive 2D editor",
+          subtitle: "Move, rotate, and resize the room, desk, and window directly on the floor plan.",
+          legendWindow: "Window",
+          legendDesk: "Desk",
+          legendMonitor: "Monitor",
+          legendHandles: "Rotation and resize handles",
+          hint: "The analysis is only recalculated after the gesture ends.",
+          hintDragging: "The simulation is recalculated when you release the mouse.",
+          hintCommit: "Analysis updated after confirming the gesture.",
+          room: "Room",
+          desk: "Desk",
+          monitor: "Monitor",
+          window: "Window",
         },
       };
 
@@ -374,6 +408,23 @@
         hint.textContent = text;
       }
 
+      function t(key) {
+        const language = state.language in TRANSLATIONS ? state.language : "es";
+        return TRANSLATIONS[language][key] || TRANSLATIONS.es[key] || key;
+      }
+
+      function applyChromeTranslations() {
+        document.getElementById("toolbar-title").textContent = t("title");
+        document.getElementById("toolbar-subtitle").textContent = t("subtitle");
+        document.getElementById("legend-window").textContent = t("legendWindow");
+        document.getElementById("legend-desk").textContent = t("legendDesk");
+        document.getElementById("legend-monitor").textContent = t("legendMonitor");
+        document.getElementById("legend-handles").textContent = t("legendHandles");
+        if (!state.drag) {
+          setHint(t("hint"));
+        }
+      }
+
       function drawScene() {
         clearSvg();
         updateView();
@@ -460,7 +511,7 @@
           y: roomOutline[2].y + 20,
           class: "label",
         });
-        label.textContent = "Habitación";
+        label.textContent = t("room");
         svg.appendChild(label);
       }
 
@@ -517,7 +568,7 @@
           y: center.y - 12,
           class: "label",
         });
-        label.textContent = "Ventana";
+        label.textContent = t("window");
         svg.appendChild(label);
       }
 
@@ -597,7 +648,7 @@
           y: center.y - 12,
           class: "label",
         });
-        label.textContent = "Mesa";
+        label.textContent = t("desk");
         svg.appendChild(label);
       }
 
@@ -661,7 +712,7 @@
           y: center.y + 18,
           class: "label",
         });
-        label.textContent = "Monitor";
+        label.textContent = t("monitor");
         svg.appendChild(label);
       }
 
@@ -914,7 +965,7 @@
           event_seq: state.eventSeq,
           status: "commit",
         });
-        setHint("Análisis actualizado tras confirmar el gesto.");
+        setHint(t("hintCommit"));
         state.drag = null;
       }
 
@@ -969,7 +1020,7 @@
         }
         state.drag = drag;
         svg.classList.add("dragging");
-        setHint("Al soltar el ratón se recalcula la simulación.");
+        setHint(t("hintDragging"));
       }
 
       function handlePointerMove(event) {
@@ -1017,6 +1068,8 @@
         if (!incomingScene) {
           return;
         }
+        state.language = (data.args || {}).language || "es";
+        applyChromeTranslations();
         syncRoomElement(incomingScene);
         syncWindowToRoom(incomingScene);
         if (!state.drag) {
@@ -1036,6 +1089,7 @@
 
       notifyReady();
       attachEvents();
+      applyChromeTranslations();
       setFrameHeight(document.documentElement.scrollHeight);
     </script>
   </body>

@@ -17,6 +17,7 @@ from app.domain.models import (
 )
 from app.domain.validation import ValidationError, validate_request
 from app.services.weather import geocode_city
+from app.ui.i18n import LanguageCode, translate, translate_compass, translate_preset
 from app.ui.presets import (
     DESK_LAYOUT_PRESETS,
     MONITOR_PRESETS,
@@ -41,8 +42,8 @@ class SidebarSubmission:
     location_label: str | None = None
 
 
-def _compass_label(value: int) -> str:
-    return {0: "Norte", 90: "Este", 180: "Sur", 270: "Oeste"}[value]
+def _compass_label(value: int, language: LanguageCode) -> str:
+    return translate_compass(value, language)
 
 
 def request_to_session_patch(request: AnalysisRequest) -> dict[str, object]:
@@ -104,7 +105,7 @@ def ensure_sidebar_state() -> None:
         st.session_state["analysis_date"] = date.today()
 
 
-def _resolve_location() -> LocationInput:
+def _resolve_location(language: LanguageCode) -> LocationInput:
     mode = st.session_state["location_mode"]
     log_event(logger, logging.INFO, "location_mode_selected", mode=mode)
     if mode == "Ciudad":
@@ -118,6 +119,8 @@ def _resolve_location() -> LocationInput:
             )
             raise ValidationError(
                 "No he podido resolver esa ciudad. Prueba otro nombre o usa latitud y longitud."
+                if language == "es"
+                else "I could not resolve that city. Try another name or use latitude and longitude."
             )
         return location
     return LocationInput(
@@ -129,8 +132,8 @@ def _resolve_location() -> LocationInput:
     )
 
 
-def build_request_from_session() -> AnalysisRequest:
-    location = _resolve_location()
+def build_request_from_session(language: LanguageCode = "es") -> AnalysisRequest:
+    location = _resolve_location(language)
     request = AnalysisRequest(
         location=location,
         analysis_date=st.session_state["analysis_date"],
@@ -171,21 +174,34 @@ def build_request_from_session() -> AnalysisRequest:
     return request
 
 
-def _render_presets() -> bool:
-    with st.expander("Presets útiles", expanded=True):
-        room_preset = st.selectbox("Habitación", list(ROOM_PRESETS), key="room_preset")
+def _render_presets(language: LanguageCode) -> bool:
+    with st.expander(translate("sidebar.presets", language), expanded=True):
+        room_preset = st.selectbox(
+            translate("sidebar.room", language),
+            list(ROOM_PRESETS),
+            key="room_preset",
+            format_func=lambda label: translate_preset("room", label, language),
+        )
         window_preset = st.selectbox(
-            "Ventana", list(WINDOW_PRESETS), key="window_preset"
+            translate("sidebar.window", language),
+            list(WINDOW_PRESETS),
+            key="window_preset",
+            format_func=lambda label: translate_preset("window", label, language),
         )
         monitor_preset = st.selectbox(
-            "Monitor", list(MONITOR_PRESETS), key="monitor_preset"
+            translate("sidebar.monitor", language),
+            list(MONITOR_PRESETS),
+            key="monitor_preset",
         )
         desk_layout_preset = st.selectbox(
-            "Distribución de la mesa",
+            translate("sidebar.desk_layout", language),
             list(DESK_LAYOUT_PRESETS),
             key="desk_layout_preset",
+            format_func=lambda label: translate_preset("desk_layout", label, language),
         )
-        apply_clicked = st.button("Aplicar presets", width="stretch")
+        apply_clicked = st.button(
+            translate("sidebar.apply_presets", language), width="stretch"
+        )
         if apply_clicked:
             patch = apply_presets(
                 room_preset, window_preset, monitor_preset, desk_layout_preset
@@ -205,16 +221,25 @@ def _render_presets() -> bool:
     return apply_clicked
 
 
-def _render_location_and_weather() -> None:
-    st.subheader("Ubicación y fecha")
-    st.radio("Modo", ["Ciudad", "Manual"], key="location_mode", horizontal=True)
+def _render_location_and_weather(language: LanguageCode) -> None:
+    st.subheader(translate("sidebar.location_and_date", language))
+    st.radio(
+        translate("sidebar.mode", language),
+        ["Ciudad", "Manual"],
+        key="location_mode",
+        horizontal=True,
+        format_func=lambda value: translate(
+            "sidebar.mode.city" if value == "Ciudad" else "sidebar.mode.manual",
+            language,
+        ),
+    )
     if st.session_state["location_mode"] == "Ciudad":
-        st.text_input("Ciudad o ciudad, país", key="city_query")
+        st.text_input(translate("sidebar.city_query", language), key="city_query")
     else:
         col1, col2 = st.columns(2)
         with col1:
             st.number_input(
-                "Latitud",
+                "Latitud" if language == "es" else "Latitude",
                 min_value=-90.0,
                 max_value=90.0,
                 step=0.0001,
@@ -223,35 +248,38 @@ def _render_location_and_weather() -> None:
             )
         with col2:
             st.number_input(
-                "Longitud",
+                "Longitud" if language == "es" else "Longitude",
                 min_value=-180.0,
                 max_value=180.0,
                 step=0.0001,
                 format="%.4f",
                 key="manual_longitude",
             )
-        st.text_input("Zona horaria IANA", key="manual_timezone")
+        st.text_input(translate("sidebar.timezone", language), key="manual_timezone")
 
-    st.date_input("Fecha de análisis", key="analysis_date")
-    st.checkbox("Intentar clima real con Open-Meteo", key="use_live_weather")
-    st.checkbox("Añadir resumen estacional", key="include_seasonal_summary")
+    st.date_input(translate("sidebar.analysis_date", language), key="analysis_date")
+    st.checkbox(translate("sidebar.use_live_weather", language), key="use_live_weather")
+    st.checkbox(
+        translate("sidebar.include_seasonal_summary", language),
+        key="include_seasonal_summary",
+    )
 
 
-def _render_advanced_numeric_controls() -> None:
-    with st.expander("Ajuste numérico avanzado", expanded=False):
-        st.caption("Úsalo como apoyo o para hacer ajustes finos cuando lo necesites.")
+def _render_advanced_numeric_controls(language: LanguageCode) -> None:
+    with st.expander(translate("sidebar.advanced_controls", language), expanded=False):
+        st.caption(translate("sidebar.advanced_caption", language))
 
-        st.subheader("Ventana")
+        st.subheader(translate("sidebar.window", language))
         st.select_slider(
-            "Orientación de la ventana",
+            "Orientación de la ventana" if language == "es" else "Window orientation",
             options=[0, 90, 180, 270],
             key="window_orientation_deg",
-            format_func=_compass_label,
+            format_func=lambda value: _compass_label(value, language),
         )
         col1, col2 = st.columns(2)
         with col1:
             st.number_input(
-                "Ancho de la ventana (m)",
+                "Ancho de la ventana (m)" if language == "es" else "Window width (m)",
                 min_value=0.6,
                 max_value=5.0,
                 step=0.1,
@@ -259,25 +287,25 @@ def _render_advanced_numeric_controls() -> None:
             )
         with col2:
             st.slider(
-                "Centro de la ventana",
+                "Centro de la ventana" if language == "es" else "Window center",
                 min_value=0.1,
                 max_value=0.9,
                 step=0.01,
                 key="window_center_ratio",
             )
 
-        st.subheader("Habitación")
+        st.subheader(translate("sidebar.room", language))
         col1, col2 = st.columns(2)
         with col1:
             st.number_input(
-                "Ancho de la habitación (m)",
+                "Ancho de la habitación (m)" if language == "es" else "Room width (m)",
                 min_value=2.0,
                 max_value=10.0,
                 step=0.1,
                 key="room_width_m",
             )
             st.number_input(
-                "Altura del techo (m)",
+                "Altura del techo (m)" if language == "es" else "Ceiling height (m)",
                 min_value=2.1,
                 max_value=4.0,
                 step=0.1,
@@ -285,28 +313,33 @@ def _render_advanced_numeric_controls() -> None:
             )
         with col2:
             st.number_input(
-                "Fondo de la habitación (m)",
+                "Fondo de la habitación (m)" if language == "es" else "Room depth (m)",
                 min_value=2.0,
                 max_value=10.0,
                 step=0.1,
                 key="room_depth_m",
             )
 
-        st.subheader("Mesa")
+        st.subheader("Mesa" if language == "es" else "Desk")
         col1, col2 = st.columns(2)
         with col1:
             st.number_input(
-                "Posición X de la mesa (m)", min_value=0.0, step=0.05, key="desk_x_m"
+                "Posición X de la mesa (m)"
+                if language == "es"
+                else "Desk X position (m)",
+                min_value=0.0,
+                step=0.05,
+                key="desk_x_m",
             )
             st.number_input(
-                "Ancho de la mesa (m)",
+                "Ancho de la mesa (m)" if language == "es" else "Desk width (m)",
                 min_value=0.8,
                 max_value=2.2,
                 step=0.05,
                 key="desk_width_m",
             )
             st.number_input(
-                "Altura de la mesa (m)",
+                "Altura de la mesa (m)" if language == "es" else "Desk height (m)",
                 min_value=0.65,
                 max_value=0.9,
                 step=0.01,
@@ -314,41 +347,52 @@ def _render_advanced_numeric_controls() -> None:
             )
         with col2:
             st.number_input(
-                "Posición Y de la mesa (m)", min_value=0.0, step=0.05, key="desk_y_m"
+                "Posición Y de la mesa (m)"
+                if language == "es"
+                else "Desk Y position (m)",
+                min_value=0.0,
+                step=0.05,
+                key="desk_y_m",
             )
             st.number_input(
-                "Fondo de la mesa (m)",
+                "Fondo de la mesa (m)" if language == "es" else "Desk depth (m)",
                 min_value=0.5,
                 max_value=1.1,
                 step=0.05,
                 key="desk_depth_m",
             )
             st.slider(
-                "Orientación de la mesa",
+                "Orientación de la mesa" if language == "es" else "Desk orientation",
                 min_value=0,
                 max_value=359,
                 step=15,
                 key="desk_orientation_deg",
             )
 
-        st.subheader("Monitor")
+        st.subheader(translate("sidebar.monitor", language))
         col1, col2 = st.columns(2)
         with col1:
             st.number_input(
-                "Posición X del monitor (m)",
+                "Posición X del monitor (m)"
+                if language == "es"
+                else "Monitor X position (m)",
                 min_value=0.0,
                 step=0.05,
                 key="monitor_x_m",
             )
             st.number_input(
-                "Diagonal del monitor (in)",
+                "Diagonal del monitor (in)"
+                if language == "es"
+                else "Monitor diagonal (in)",
                 min_value=20.0,
                 max_value=34.0,
                 step=1.0,
                 key="monitor_diagonal_in",
             )
             st.number_input(
-                "Altura del centro del monitor (m)",
+                "Altura del centro del monitor (m)"
+                if language == "es"
+                else "Monitor center height (m)",
                 min_value=0.8,
                 max_value=1.6,
                 step=0.01,
@@ -356,31 +400,35 @@ def _render_advanced_numeric_controls() -> None:
             )
         with col2:
             st.number_input(
-                "Posición Y del monitor (m)",
+                "Posición Y del monitor (m)"
+                if language == "es"
+                else "Monitor Y position (m)",
                 min_value=0.0,
                 step=0.05,
                 key="monitor_y_m",
             )
             st.slider(
-                "Orientación del monitor",
+                "Orientación del monitor"
+                if language == "es"
+                else "Monitor orientation",
                 min_value=0,
                 max_value=359,
                 step=15,
                 key="monitor_orientation_deg",
             )
             st.slider(
-                "Inclinación del monitor",
+                "Inclinación del monitor" if language == "es" else "Monitor tilt",
                 min_value=-20,
                 max_value=20,
                 step=1,
                 key="monitor_tilt_deg",
             )
 
-        st.subheader("Ergonomía")
+        st.subheader("Ergonomía" if language == "es" else "Ergonomics")
         col1, col2 = st.columns(2)
         with col1:
             st.number_input(
-                "Altura de los ojos (m)",
+                "Altura de los ojos (m)" if language == "es" else "Eye height (m)",
                 min_value=1.0,
                 max_value=1.5,
                 step=0.01,
@@ -388,7 +436,9 @@ def _render_advanced_numeric_controls() -> None:
             )
         with col2:
             st.number_input(
-                "Distancia ojos-monitor (m)",
+                "Distancia ojos-monitor (m)"
+                if language == "es"
+                else "Eye-to-monitor distance (m)",
                 min_value=0.45,
                 max_value=0.9,
                 step=0.01,
@@ -396,21 +446,21 @@ def _render_advanced_numeric_controls() -> None:
             )
 
 
-def render_sidebar() -> SidebarSubmission:
+def render_sidebar(language: LanguageCode = "es") -> SidebarSubmission:
     ensure_sidebar_state()
     apply_pending_session_patch()
     with st.sidebar:
-        st.header("Contexto del escenario")
-        st.caption(
-            "La distribución principal se edita en el plano 2D del panel central."
-        )
+        st.header(translate("sidebar.context", language))
+        st.caption(translate("sidebar.caption", language))
 
-        preset_applied = _render_presets()
-        _render_location_and_weather()
-        _render_advanced_numeric_controls()
+        preset_applied = _render_presets(language)
+        _render_location_and_weather(language)
+        _render_advanced_numeric_controls(language)
 
         run_requested = st.button(
-            "Analizar configuración", type="primary", width="stretch"
+            translate("sidebar.run_analysis", language),
+            type="primary",
+            width="stretch",
         )
         auto_run = "current_result" not in st.session_state
         should_build_request = run_requested or auto_run or preset_applied
@@ -421,7 +471,7 @@ def render_sidebar() -> SidebarSubmission:
                 use_live_weather=bool(st.session_state["use_live_weather"]),
             )
         try:
-            request = build_request_from_session()
+            request = build_request_from_session(language)
         except (ValidationError, Exception) as exc:
             log_event(
                 logger,

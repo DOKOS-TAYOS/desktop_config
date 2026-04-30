@@ -449,6 +449,15 @@ def _aggregate_risk(values: list[float]) -> float:
     return round(0.6 * max(values) + 0.4 * (sum(values) / len(values)), 1)
 
 
+def _daily_comfort_score(slot_comfort_scores: list[float]) -> float:
+    if not slot_comfort_scores:
+        return 0.0
+    mean_comfort = sum(slot_comfort_scores) / len(slot_comfort_scores)
+    tail_size = max(1, math.ceil(len(slot_comfort_scores) * 0.25))
+    worst_period_mean = sum(sorted(slot_comfort_scores)[:tail_size]) / tail_size
+    return round(0.7 * mean_comfort + 0.3 * worst_period_mean, 1)
+
+
 def _build_alerts(
     slots: list[TimeSlotResult], weather_context: WeatherContext
 ) -> list[str]:
@@ -571,18 +580,7 @@ def analyze_scenario(
     glare_score = _aggregate_risk([slot.glare_score for slot in slots])
     heat_score = _aggregate_risk([slot.heat_score for slot in slots])
     ergonomic_score = slots[0].ergonomic_score if slots else _ergonomic_risk(request)
-    comfort_score = round(
-        max(
-            0.0,
-            100
-            - (
-                DEFAULT_WEIGHTS.glare * glare_score
-                + DEFAULT_WEIGHTS.heat * heat_score
-                + DEFAULT_WEIGHTS.ergonomics * ergonomic_score
-            ),
-        ),
-        1,
-    )
+    comfort_score = _daily_comfort_score([slot.comfort_score for slot in slots])
     result = ScenarioResult(
         request=request,
         time_slots=slots,

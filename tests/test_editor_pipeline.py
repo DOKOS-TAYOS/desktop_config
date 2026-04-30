@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from app.services.analysis import analyze_scenario
 from app.services.recommendations import recommend_variant
+from app.ui.editor_component import render_floor_plan_editor
 from app.ui.editor_state import (
     EditorDelta,
     apply_editor_delta,
@@ -66,3 +67,18 @@ def test_scene_edit_keeps_analysis_and_recommendation_pipeline_working(base_requ
 
     assert current.comfort_score >= 0
     assert recommended.comfort_score >= current.comfort_score
+
+
+def test_editor_component_receives_active_language(base_request, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_component(**kwargs):
+        captured.update(kwargs)
+        return None
+
+    monkeypatch.setattr("app.ui.editor_component._EDITOR_COMPONENT", fake_component)
+
+    scene = build_scene_state(base_request)
+    render_floor_plan_editor(scene, language="en")
+
+    assert captured["language"] == "en"

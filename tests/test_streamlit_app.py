@@ -8,9 +8,17 @@ from app.domain.models import (
     SeasonalSummary,
     TimeWindowSummary,
 )
+import streamlit as st
+
 from app.services.weather import build_theoretical_weather_context
 from app.ui.charts import timeline_chart
-from streamlit_app import _best_and_worst_season, _diagnosis_panel_data
+from app.ui.i18n import translate
+from streamlit_app import (
+    _best_and_worst_season,
+    _current_language,
+    _diagnosis_panel_data,
+    _static_plotly_config,
+)
 
 
 def test_best_and_worst_season_returns_expected_labels(base_request) -> None:
@@ -169,3 +177,28 @@ def test_timeline_chart_uses_dark_background(base_request) -> None:
     assert isinstance(layout, dict)
     assert isinstance(paper_bgcolor, str)
     assert paper_bgcolor.startswith("#")
+
+
+def test_static_plotly_config_disables_interaction() -> None:
+    config = _static_plotly_config()
+
+    assert config == {
+        "displayModeBar": False,
+        "scrollZoom": False,
+        "staticPlot": True,
+    }
+
+
+def test_translate_returns_spanish_and_english_values() -> None:
+    assert translate("app.title", "es") == "SunSetup Planner"
+    assert translate("header.subtitle", "en").startswith(
+        "Decide whether your desk works better"
+    )
+    assert translate("sidebar.run_analysis", "en") == "Analyze layout"
+    assert translate("summary.whats_happening", "en") == "What is happening"
+
+
+def test_current_language_defaults_to_spanish() -> None:
+    st.session_state.clear()
+
+    assert _current_language() == "es"

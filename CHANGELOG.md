@@ -9,3 +9,7 @@
 - Added `pyrightconfig.json` so type checking resolves the project-local `.venv` and local `app.*` imports consistently.
 - Tightened the solar typing path so `pyright` passes without changing runtime behavior, and documented the expected `.venv` plus `pyright` workflow in the README.
 - Switched the UI to a fixed dark theme, added drag-resize handles for the room and desk with automatic reclamping, expanded room presets, and normalized the visible Spanish copy.
+- Locked all Plotly result charts into a static mode with no toolbar, zoom, or pan controls so the analysis panels are easier to read for end users.
+- Added a public-facing ES/EN language switch, translated the main Streamlit UI and the floor-plan editor, and clarified the repository's Streamlit Community Cloud deployment guidance while keeping Open-Meteo fallback behavior.
+- Reworked recommendation search so desk and monitor rotation are chosen from a global sweep plus local refinement, which avoids chained “rotate 30° twice” guidance and produces a single better estimate.
+- Adjusted the daily comfort rollup so it reflects not only the average but also the worst slice of the day, which better matches layouts that feel fine overall but have clearly bad periods.
