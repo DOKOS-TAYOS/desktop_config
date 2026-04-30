@@ -13,7 +13,9 @@ _HANDLER_MARKER = "_sunsetup_handler"
 
 
 def _coerce_level(level_name: str | None) -> int:
-    normalized = (level_name or os.getenv("SUNSETUP_LOG_LEVEL", _DEFAULT_LEVEL_NAME)).upper()
+    normalized = (
+        level_name or os.getenv("SUNSETUP_LOG_LEVEL", _DEFAULT_LEVEL_NAME)
+    ).upper()
     return getattr(logging, normalized, logging.INFO)
 
 
@@ -29,7 +31,9 @@ def _format_value(value: Any) -> str:
         return str(value)
     if isinstance(value, str):
         text = value if len(value) <= 120 else f"{value[:117]}..."
-        if any(character.isspace() for character in text) or any(character in text for character in ('"', "=")):
+        if any(character.isspace() for character in text) or any(
+            character in text for character in ('"', "=")
+        ):
             return json.dumps(text)
         return text
     if value is None:
@@ -51,7 +55,9 @@ def build_event_message(event: str, **fields: Any) -> str:
     return " ".join(parts)
 
 
-def setup_logging(*, force: bool = False, level_name: str | None = None) -> logging.Logger:
+def setup_logging(
+    *, force: bool = False, level_name: str | None = None
+) -> logging.Logger:
     root_logger = logging.getLogger()
     if force:
         for handler in list(root_logger.handlers):
@@ -60,7 +66,11 @@ def setup_logging(*, force: bool = False, level_name: str | None = None) -> logg
 
     level = _coerce_level(level_name)
     existing_handler = next(
-        (handler for handler in root_logger.handlers if getattr(handler, _HANDLER_MARKER, False)),
+        (
+            handler
+            for handler in root_logger.handlers
+            if getattr(handler, _HANDLER_MARKER, False)
+        ),
         None,
     )
     if existing_handler is None:
@@ -112,8 +122,12 @@ class BoundLogger:
         self.event(logging.ERROR, event, **fields)
 
     def exception(self, event: str, **fields: Any) -> None:
-        self.logger.exception(build_event_message(event, **{**self.context_fields, **fields}))
+        self.logger.exception(
+            build_event_message(event, **{**self.context_fields, **fields})
+        )
 
 
 def bind_context(logger: logging.Logger, **fields: Any) -> BoundLogger:
-    return BoundLogger(logger, {key: value for key, value in fields.items() if value is not None})
+    return BoundLogger(
+        logger, {key: value for key, value in fields.items() if value is not None}
+    )

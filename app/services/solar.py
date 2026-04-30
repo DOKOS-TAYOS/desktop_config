@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 from functools import lru_cache
+from typing import cast
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -23,9 +24,12 @@ def _solar_position_tuple(
     else:
         when_local = when_local.astimezone(tz)
     index = pd.DatetimeIndex([pd.Timestamp(when_local)])
-    result = pvlib.solarposition.get_solarposition(index, latitude, longitude)
-    row = result.iloc[0]
-    return float(row["azimuth"]), float(row["apparent_elevation"])
+    result = cast(
+        pd.DataFrame,
+        pvlib.solarposition.get_solarposition(index, latitude, longitude),
+    )
+    first_row = result.to_dict(orient="records")[0]
+    return float(first_row["azimuth"]), float(first_row["apparent_elevation"])
 
 
 def get_solar_position(
@@ -39,7 +43,9 @@ def get_solar_position(
         when_local = when_local.replace(tzinfo=tz)
     else:
         when_local = when_local.astimezone(tz)
-    azimuth_deg, elevation_deg = _solar_position_tuple(latitude, longitude, timezone, when_local)
+    azimuth_deg, elevation_deg = _solar_position_tuple(
+        latitude, longitude, timezone, when_local
+    )
     return SolarPosition(
         when_local=when_local,
         azimuth_deg=azimuth_deg,
@@ -48,13 +54,17 @@ def get_solar_position(
 
 
 def generate_day_times(
-    analysis_date: date, timezone: str, time_step_minutes: int
+    analysis_date: date,
+    timezone: str,
+    time_step_minutes: int,
 ) -> list[datetime]:
     tz = ZoneInfo(timezone)
-    current = datetime.combine(analysis_date, time.min, tzinfo=tz)
-    end = current + timedelta(days=1)
+    local_start = datetime.combine(analysis_date, time.min, tzinfo=tz)
+    local_end = datetime.combine(analysis_date + timedelta(days=1), time.min, tzinfo=tz)
+    current_utc = local_start.astimezone(dt_timezone.utc)
+    end_utc = local_end.astimezone(dt_timezone.utc)
     results: list[datetime] = []
-    while current < end:
-        results.append(current)
-        current += timedelta(minutes=time_step_minutes)
+    while current_utc < end_utc:
+        results.append(current_utc.astimezone(tz))
+        current_utc += timedelta(minutes=time_step_minutes)
     return results

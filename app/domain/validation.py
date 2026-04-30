@@ -40,13 +40,25 @@ def validate_request(request: AnalysisRequest) -> None:
     ergonomic = request.ergonomic
 
     if not -90 <= location.latitude <= 90:
-        _fail("latitude must be between -90 and 90.", field="location.latitude", value=location.latitude)
+        _fail(
+            "latitude must be between -90 and 90.",
+            field="location.latitude",
+            value=location.latitude,
+        )
     if not -180 <= location.longitude <= 180:
-        _fail("longitude must be between -180 and 180.", field="location.longitude", value=location.longitude)
+        _fail(
+            "longitude must be between -180 and 180.",
+            field="location.longitude",
+            value=location.longitude,
+        )
     try:
         ZoneInfo(location.timezone)
     except ZoneInfoNotFoundError:
-        _fail("timezone must be a valid IANA timezone.", field="location.timezone", value=location.timezone)
+        _fail(
+            "timezone must be a valid IANA timezone.",
+            field="location.timezone",
+            value=location.timezone,
+        )
 
     for name, value in (
         ("width_m", room.width_m),
@@ -64,17 +76,41 @@ def validate_request(request: AnalysisRequest) -> None:
     ):
         _ensure_positive(name, value)
 
-    if window.sill_height_m < 0 or window.sill_height_m + window.height_m > room.ceiling_height_m:
-        _fail("window sill/height must fit inside the room height.", field="window.height")
+    if (
+        window.sill_height_m < 0
+        or window.sill_height_m + window.height_m > room.ceiling_height_m
+    ):
+        _fail(
+            "window sill/height must fit inside the room height.", field="window.height"
+        )
     if not 0.0 <= window.center_ratio <= 1.0:
-        _fail("window center ratio must be between 0 and 1.", field="window.center_ratio", value=window.center_ratio)
+        _fail(
+            "window center ratio must be between 0 and 1.",
+            field="window.center_ratio",
+            value=window.center_ratio,
+        )
 
-    wall_span = room.width_m if normalize_angle_deg(window.orientation_deg) in (0, 180) else room.depth_m
+    wall_span = (
+        room.width_m
+        if normalize_angle_deg(window.orientation_deg) in (0, 180)
+        else room.depth_m
+    )
     if window.width_m > wall_span:
-        _fail("window width cannot exceed its wall span.", field="window.width_m", value=window.width_m)
+        _fail(
+            "window width cannot exceed its wall span.",
+            field="window.width_m",
+            value=window.width_m,
+        )
     center_along_wall = window.center_ratio * wall_span
-    if center_along_wall - window.width_m / 2 < 0 or center_along_wall + window.width_m / 2 > wall_span:
-        _fail("window must stay fully inside its wall span.", field="window.center_ratio", value=window.center_ratio)
+    if (
+        center_along_wall - window.width_m / 2 < 0
+        or center_along_wall + window.width_m / 2 > wall_span
+    ):
+        _fail(
+            "window must stay fully inside its wall span.",
+            field="window.center_ratio",
+            value=window.center_ratio,
+        )
 
     desk_rect = desk_rectangle(desk)
     if not (0 <= desk.x_m <= room.width_m and 0 <= desk.y_m <= room.depth_m):
@@ -86,9 +122,18 @@ def validate_request(request: AnalysisRequest) -> None:
     if not (0 <= monitor.x_m <= room.width_m and 0 <= monitor.y_m <= room.depth_m):
         _fail("monitor must remain inside the room bounds.", field="monitor.position")
     if not point_in_rotated_rectangle((monitor.x_m, monitor.y_m), desk_rect):
-        _fail("monitor must sit on top of the desk footprint.", field="monitor.position")
+        _fail(
+            "monitor must sit on top of the desk footprint.", field="monitor.position"
+        )
 
     if monitor.center_height_m > room.ceiling_height_m:
-        _fail("monitor center height must fit inside the room.", field="monitor.center_height_m")
+        _fail(
+            "monitor center height must fit inside the room.",
+            field="monitor.center_height_m",
+        )
     if not -45 <= monitor.tilt_deg <= 45:
-        _fail("monitor tilt must stay within a realistic range.", field="monitor.tilt_deg", value=monitor.tilt_deg)
+        _fail(
+            "monitor tilt must stay within a realistic range.",
+            field="monitor.tilt_deg",
+            value=monitor.tilt_deg,
+        )

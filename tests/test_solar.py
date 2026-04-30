@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from app.services.solar import get_solar_position
+from app.services.solar import generate_day_times, get_solar_position
 
 
 def test_solar_position_night_has_negative_elevation():
@@ -31,3 +31,13 @@ def test_midday_elevation_is_higher_than_morning():
     )
 
     assert noon.elevation_deg > morning.elevation_deg
+
+
+def test_generate_day_times_skips_nonexistent_local_hour_on_dst_start():
+    slots = generate_day_times(date(2026, 3, 29), "Europe/Madrid", 60)
+
+    slot_labels = [slot.strftime("%H:%M %z") for slot in slots]
+
+    assert len(slots) == 23
+    assert "02:00 +0100" not in slot_labels
+    assert len({slot.astimezone().timestamp() for slot in slots}) == len(slots)

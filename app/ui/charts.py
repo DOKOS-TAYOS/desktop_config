@@ -4,7 +4,51 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from app.domain.models import ScenarioResult
-from app.utils.geometry import compass_to_unit, desk_rectangle, rectangle_corners, window_center_point
+from app.utils.geometry import (
+    compass_to_unit,
+    desk_rectangle,
+    rectangle_corners,
+    window_center_point,
+)
+
+
+DARK_PAPER_BG = "#11181f"
+DARK_PLOT_BG = "#182028"
+DARK_GRID = "#2b3642"
+DARK_FONT = "#edf4ef"
+
+
+def _apply_dark_layout(figure: go.Figure, *, height: int) -> go.Figure:
+    figure.update_layout(
+        height=height,
+        paper_bgcolor=DARK_PAPER_BG,
+        plot_bgcolor=DARK_PLOT_BG,
+        font={"color": DARK_FONT},
+        margin={"l": 10, "r": 10, "t": 20, "b": 10},
+        legend={
+            "orientation": "h",
+            "y": 1.08,
+            "bgcolor": "rgba(0,0,0,0)",
+            "font": {"color": DARK_FONT},
+        },
+    )
+    figure.update_xaxes(
+        showgrid=True,
+        gridcolor=DARK_GRID,
+        zeroline=False,
+        linecolor=DARK_GRID,
+        tickfont={"color": DARK_FONT},
+        title_font={"color": DARK_FONT},
+    )
+    figure.update_yaxes(
+        showgrid=True,
+        gridcolor=DARK_GRID,
+        zeroline=False,
+        linecolor=DARK_GRID,
+        tickfont={"color": DARK_FONT},
+        title_font={"color": DARK_FONT},
+    )
+    return figure
 
 
 def timeline_dataframe(result: ScenarioResult) -> pd.DataFrame:
@@ -27,7 +71,7 @@ def timeline_chart(result: ScenarioResult) -> go.Figure:
             y=data["glare"],
             mode="lines",
             name="Riesgo de reflejo",
-            line={"color": "#b8402a", "width": 3},
+            line={"color": "#ff8e72", "width": 3},
         )
     )
     figure.add_trace(
@@ -36,7 +80,7 @@ def timeline_chart(result: ScenarioResult) -> go.Figure:
             y=data["heat"],
             mode="lines",
             name="Riesgo térmico",
-            line={"color": "#d18c21", "width": 3},
+            line={"color": "#f1bc62", "width": 3},
         )
     )
     figure.add_trace(
@@ -44,24 +88,20 @@ def timeline_chart(result: ScenarioResult) -> go.Figure:
             x=data["hora"],
             y=data["comfort"],
             mode="lines",
-            name="Comfort score",
-            line={"color": "#1f6b52", "width": 3},
+            name="Confort general",
+            line={"color": "#7bd6bf", "width": 3},
         )
     )
-    figure.update_layout(
-        height=360,
-        margin={"l": 10, "r": 10, "t": 20, "b": 10},
-        yaxis_title="Puntuación",
-        legend_orientation="h",
-        legend_y=1.1,
-    )
+    figure.update_layout(yaxis_title="Puntuación")
     figure.update_yaxes(range=[0, 100])
-    return figure
+    return _apply_dark_layout(figure, height=360)
 
 
-def score_comparison_chart(current: ScenarioResult, recommended: ScenarioResult) -> go.Figure:
+def score_comparison_chart(
+    current: ScenarioResult, recommended: ScenarioResult
+) -> go.Figure:
     figure = go.Figure()
-    metrics = ["Comfort", "Glare", "Heat", "Ergonomía"]
+    metrics = ["Confort", "Reflejo", "Calor", "Ergonomía"]
     figure.add_trace(
         go.Bar(
             name="Actual",
@@ -72,7 +112,7 @@ def score_comparison_chart(current: ScenarioResult, recommended: ScenarioResult)
                 current.heat_score,
                 current.ergonomic_score,
             ],
-            marker_color="#7e8b85",
+            marker_color="#7d8a96",
         )
     )
     figure.add_trace(
@@ -85,16 +125,12 @@ def score_comparison_chart(current: ScenarioResult, recommended: ScenarioResult)
                 recommended.heat_score,
                 recommended.ergonomic_score,
             ],
-            marker_color="#1f6b52",
+            marker_color="#7bd6bf",
         )
     )
-    figure.update_layout(
-        barmode="group",
-        height=300,
-        margin={"l": 10, "r": 10, "t": 10, "b": 10},
-    )
+    figure.update_layout(barmode="group")
     figure.update_yaxes(range=[0, 100])
-    return figure
+    return _apply_dark_layout(figure, height=300)
 
 
 def _window_segment(result: ScenarioResult) -> tuple[list[float], list[float]]:
@@ -107,7 +143,9 @@ def _window_segment(result: ScenarioResult) -> tuple[list[float], list[float]]:
     return ([center_x, center_x], [center_y - half_width, center_y + half_width])
 
 
-def room_plan_chart(current: ScenarioResult, recommended: ScenarioResult | None = None) -> go.Figure:
+def room_plan_chart(
+    current: ScenarioResult, recommended: ScenarioResult | None = None
+) -> go.Figure:
     figure = go.Figure()
     room = current.request.room
 
@@ -117,7 +155,7 @@ def room_plan_chart(current: ScenarioResult, recommended: ScenarioResult | None 
             y=[0, 0, room.depth_m, room.depth_m, 0],
             mode="lines",
             name="Habitación",
-            line={"color": "#24372b", "width": 3},
+            line={"color": "#d8e3dc", "width": 3},
         )
     )
 
@@ -128,7 +166,7 @@ def room_plan_chart(current: ScenarioResult, recommended: ScenarioResult | None 
             y=wy,
             mode="lines",
             name="Ventana",
-            line={"color": "#4fa4c2", "width": 6},
+            line={"color": "#67c5e7", "width": 6},
         )
     )
 
@@ -141,8 +179,8 @@ def room_plan_chart(current: ScenarioResult, recommended: ScenarioResult | None 
             mode="lines",
             fill="toself",
             name="Mesa actual",
-            line={"color": "#b8402a", "width": 2},
-            fillcolor="rgba(184,64,42,0.15)",
+            line={"color": "#ff8e72", "width": 2},
+            fillcolor="rgba(255,142,114,0.18)",
         )
     )
     figure.add_trace(
@@ -151,7 +189,7 @@ def room_plan_chart(current: ScenarioResult, recommended: ScenarioResult | None 
             y=[current.request.monitor.y_m],
             mode="markers",
             name="Monitor actual",
-            marker={"size": 10, "color": "#b8402a"},
+            marker={"size": 10, "color": "#ff8e72"},
         )
     )
 
@@ -165,8 +203,8 @@ def room_plan_chart(current: ScenarioResult, recommended: ScenarioResult | None 
                 mode="lines",
                 fill="toself",
                 name="Mesa recomendada",
-                line={"color": "#1f6b52", "width": 2, "dash": "dash"},
-                fillcolor="rgba(31,107,82,0.18)",
+                line={"color": "#7bd6bf", "width": 2, "dash": "dash"},
+                fillcolor="rgba(123,214,191,0.18)",
             )
         )
         figure.add_trace(
@@ -175,33 +213,36 @@ def room_plan_chart(current: ScenarioResult, recommended: ScenarioResult | None 
                 y=[recommended.request.monitor.y_m],
                 mode="markers",
                 name="Monitor recomendado",
-                marker={"size": 10, "color": "#1f6b52"},
+                marker={"size": 10, "color": "#7bd6bf"},
             )
         )
 
-    worst_slot = max(current.time_slots, key=lambda slot: slot.glare_score)
-    ray_origin = window_center_point(room, current.request.window)
-    direction = compass_to_unit((worst_slot.solar_azimuth_deg + 180) % 360)
-    ray_length = min(room.width_m, room.depth_m) * 0.75
-    figure.add_trace(
-        go.Scatter(
-            x=[ray_origin[0], ray_origin[0] + direction[0] * ray_length],
-            y=[ray_origin[1], ray_origin[1] + direction[1] * ray_length],
-            mode="lines",
-            name="Dirección solar crítica",
-            line={"color": "#d18c21", "width": 3, "dash": "dot"},
+    if current.time_slots:
+        worst_slot = max(current.time_slots, key=lambda slot: slot.glare_score)
+        ray_origin = window_center_point(room, current.request.window)
+        direction = compass_to_unit((worst_slot.solar_azimuth_deg + 180) % 360)
+        ray_length = min(room.width_m, room.depth_m) * 0.75
+        figure.add_trace(
+            go.Scatter(
+                x=[ray_origin[0], ray_origin[0] + direction[0] * ray_length],
+                y=[ray_origin[1], ray_origin[1] + direction[1] * ray_length],
+                mode="lines",
+                name="Dirección solar crítica",
+                line={"color": "#f1bc62", "width": 3, "dash": "dot"},
+            )
         )
-    )
+
     figure.update_layout(
-        height=380,
-        margin={"l": 10, "r": 10, "t": 10, "b": 10},
         xaxis_title="Ancho (m)",
         yaxis_title="Fondo (m)",
         xaxis={"range": [-0.1, room.width_m + 0.1]},
-        yaxis={"range": [-0.1, room.depth_m + 0.1], "scaleanchor": "x", "scaleratio": 1},
-        legend_orientation="h",
+        yaxis={
+            "range": [-0.1, room.depth_m + 0.1],
+            "scaleanchor": "x",
+            "scaleratio": 1,
+        },
     )
-    return figure
+    return _apply_dark_layout(figure, height=380)
 
 
 def seasonal_heatmap(result: ScenarioResult) -> go.Figure:
@@ -212,21 +253,19 @@ def seasonal_heatmap(result: ScenarioResult) -> go.Figure:
         [item.afternoon_comfort for item in result.seasonal_summary],
     ]
     figure = go.Figure(
-        data=
-        [
+        data=[
             go.Heatmap(
                 z=values,
                 x=seasons,
                 y=["Mañana", "Mediodía", "Tarde"],
                 colorscale=[
-                    [0.0, "#b8402a"],
-                    [0.5, "#f0d17b"],
-                    [1.0, "#1f6b52"],
+                    [0.0, "#ff8e72"],
+                    [0.5, "#f1bc62"],
+                    [1.0, "#7bd6bf"],
                 ],
                 zmin=0,
                 zmax=100,
             )
         ]
     )
-    figure.update_layout(height=260, margin={"l": 10, "r": 10, "t": 10, "b": 10})
-    return figure
+    return _apply_dark_layout(figure, height=260)

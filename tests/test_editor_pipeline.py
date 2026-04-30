@@ -4,15 +4,26 @@ from types import SimpleNamespace
 
 from app.services.analysis import analyze_scenario
 from app.services.recommendations import recommend_variant
-from app.ui.editor_state import EditorDelta, apply_editor_delta, build_scene_state, scene_to_request
-from app.ui.forms import apply_pending_session_patch, queue_request_sync, request_to_session_patch
+from app.ui.editor_state import (
+    EditorDelta,
+    apply_editor_delta,
+    build_scene_state,
+    scene_to_request,
+)
+from app.ui.forms import (
+    apply_pending_session_patch,
+    queue_request_sync,
+    request_to_session_patch,
+)
 
 
 def test_request_to_session_patch_reflects_editor_changes(base_request):
     scene = build_scene_state(base_request)
     moved = apply_editor_delta(
         scene,
-        EditorDelta(target="desk", action="translate", dx_m=0.3, dy_m=0.2, preview=False),
+        EditorDelta(
+            target="desk", action="translate", dx_m=0.3, dy_m=0.2, preview=False
+        ),
     )
     updated_request = scene_to_request(moved, base_request)
 
@@ -24,7 +35,9 @@ def test_request_to_session_patch_reflects_editor_changes(base_request):
     assert patch["monitor_y_m"] == updated_request.monitor.y_m
 
 
-def test_queue_request_sync_defers_widget_patch_until_next_run(base_request, monkeypatch):
+def test_queue_request_sync_defers_widget_patch_until_next_run(
+    base_request, monkeypatch
+):
     fake_streamlit = SimpleNamespace(session_state={})
     monkeypatch.setattr("app.ui.forms.st", fake_streamlit)
 

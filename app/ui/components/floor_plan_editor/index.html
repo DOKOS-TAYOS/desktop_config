@@ -6,20 +6,21 @@
     <title>SunSetup Planner Editor</title>
     <style>
       :root {
-        color-scheme: light;
-        --bg: #f5efe4;
-        --panel: #fffdf8;
-        --grid: #e2d6c1;
-        --text: #233127;
-        --muted: #6b7468;
-        --room: #24372b;
-        --window: #4fa4c2;
-        --desk: #b8402a;
-        --desk-fill: rgba(184, 64, 42, 0.14);
-        --monitor: #1f6b52;
-        --monitor-fill: rgba(31, 107, 82, 0.16);
-        --handle: #d18c21;
-        --selection: #f0d17b;
+        color-scheme: dark;
+        --bg: #0f1419;
+        --panel: #182028;
+        --grid: #293440;
+        --text: #edf4ef;
+        --muted: #a8b4bd;
+        --room: #d8e3dc;
+        --window: #67c5e7;
+        --desk: #ff8e72;
+        --desk-fill: rgba(255, 142, 114, 0.16);
+        --monitor: #7bd6bf;
+        --monitor-fill: rgba(123, 214, 191, 0.18);
+        --handle: #f1bc62;
+        --selection: #f6dd9f;
+        --shadow: rgba(0, 0, 0, 0.28);
       }
 
       * {
@@ -29,7 +30,10 @@
       body {
         margin: 0;
         font-family: "Segoe UI", sans-serif;
-        background: linear-gradient(180deg, #f6f1e7 0%, #efe4d3 100%);
+        background:
+          radial-gradient(circle at top left, rgba(103, 197, 231, 0.16), transparent 32%),
+          radial-gradient(circle at bottom right, rgba(123, 214, 191, 0.14), transparent 28%),
+          linear-gradient(180deg, #0e1419 0%, #111920 100%);
         color: var(--text);
       }
 
@@ -38,10 +42,10 @@
       }
 
       .frame {
-        background: var(--panel);
-        border: 1px solid rgba(36, 55, 43, 0.12);
+        background: linear-gradient(180deg, rgba(24, 32, 40, 0.98), rgba(17, 24, 31, 0.98));
+        border: 1px solid rgba(168, 180, 189, 0.12);
         border-radius: 18px;
-        box-shadow: 0 16px 36px rgba(36, 55, 43, 0.08);
+        box-shadow: 0 24px 48px var(--shadow);
         overflow: hidden;
       }
 
@@ -50,8 +54,8 @@
         justify-content: space-between;
         gap: 16px;
         padding: 14px 16px 10px;
-        border-bottom: 1px solid rgba(36, 55, 43, 0.08);
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 243, 235, 0.96));
+        border-bottom: 1px solid rgba(168, 180, 189, 0.08);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
       }
 
       .toolbar h3 {
@@ -126,20 +130,20 @@
         <div class="toolbar">
           <div>
             <h3>Editor 2D interactivo</h3>
-            <p>Mueve escritorio y monitor, gira con el asa circular y desliza la ventana sobre su pared.</p>
+            <p>Mueve, gira y redimensiona la habitación, la mesa y la ventana desde el propio plano.</p>
           </div>
           <div class="legend">
-            <span><i class="dot" style="background:#4fa4c2"></i>Ventana</span>
-            <span><i class="dot" style="background:#b8402a"></i>Escritorio</span>
-            <span><i class="dot" style="background:#1f6b52"></i>Monitor</span>
-            <span><i class="dot" style="background:#d18c21"></i>Asa de giro</span>
+            <span><i class="dot" style="background:#67c5e7"></i>Ventana</span>
+            <span><i class="dot" style="background:#ff8e72"></i>Mesa</span>
+            <span><i class="dot" style="background:#7bd6bf"></i>Monitor</span>
+            <span><i class="dot" style="background:#f1bc62"></i>Asas de giro y tamaño</span>
           </div>
         </div>
         <div class="scene-wrap">
           <svg id="scene" viewBox="0 0 900 430" aria-label="Plano editable"></svg>
         </div>
         <div class="hint" id="hint">
-          La simulacion solo se recalcula al terminar el gesto.
+          El análisis solo se recalcula al terminar el gesto.
         </div>
       </div>
     </div>
@@ -159,6 +163,13 @@
           scale: 1,
         },
       };
+
+      const ROOM_MIN_WIDTH_M = 2.0;
+      const ROOM_MIN_DEPTH_M = 2.0;
+      const DESK_MIN_WIDTH_M = 0.8;
+      const DESK_MIN_DEPTH_M = 0.5;
+      const WINDOW_MIN_WIDTH_M = 0.6;
+      const MONITOR_EDGE_MARGIN_M = 0.03;
 
       function postMessageToStreamlit(payload) {
         window.parent.postMessage(
@@ -306,7 +317,26 @@
       }
 
       function selectionStroke(kind) {
-        return state.scene.selected_element === kind ? "#f0d17b" : "transparent";
+        return state.scene.selected_element === kind ? "#f6dd9f" : "transparent";
+      }
+
+      function syncRoomElement(scene) {
+        if (!scene.elements.room) {
+          scene.elements.room = {
+            kind: "room",
+            x_m: scene.room_width_m / 2,
+            y_m: scene.room_depth_m / 2,
+            width_m: scene.room_width_m,
+            depth_m: scene.room_depth_m,
+            orientation_deg: 0,
+            metadata: {},
+          };
+        }
+        scene.elements.room.x_m = scene.room_width_m / 2;
+        scene.elements.room.y_m = scene.room_depth_m / 2;
+        scene.elements.room.width_m = scene.room_width_m;
+        scene.elements.room.depth_m = scene.room_depth_m;
+        scene.elements.room.orientation_deg = 0;
       }
 
       function windowEndpoints(windowElement) {
@@ -332,6 +362,14 @@
         };
       }
 
+      function deskResizeHandlePoint(element) {
+        return localToWorld(
+          { x: element.width_m / 2, y: -element.depth_m / 2 },
+          { x: element.x_m, y: element.y_m },
+          element.orientation_deg
+        );
+      }
+
       function setHint(text) {
         hint.textContent = text;
       }
@@ -339,14 +377,6 @@
       function drawScene() {
         clearSvg();
         updateView();
-
-        const roomOutline = [
-          { x: 0, y: 0 },
-          { x: state.scene.room_width_m, y: 0 },
-          { x: state.scene.room_width_m, y: state.scene.room_depth_m },
-          { x: 0, y: state.scene.room_depth_m },
-          { x: 0, y: 0 },
-        ].map(worldToScreen);
 
         const grid = createSvg("g", { opacity: "0.9" });
         for (let x = 0.5; x < state.scene.room_width_m; x += 0.5) {
@@ -358,7 +388,7 @@
               y1: from.y,
               x2: to.x,
               y2: to.y,
-              stroke: "#e2d6c1",
+              stroke: "var(--grid)",
               "stroke-width": "1",
             })
           );
@@ -372,26 +402,66 @@
               y1: from.y,
               x2: to.x,
               y2: to.y,
-              stroke: "#e2d6c1",
+              stroke: "var(--grid)",
               "stroke-width": "1",
             })
           );
         }
         svg.appendChild(grid);
 
-        svg.appendChild(
-          createSvg("path", {
-            d: linePath(roomOutline),
-            fill: "none",
-            stroke: "#24372b",
-            "stroke-width": "4",
-            "stroke-linejoin": "round",
-          })
-        );
-
+        drawRoom();
         drawWindow();
         drawDesk();
         drawMonitor();
+      }
+
+      function drawRoom() {
+        const roomOutline = [
+          { x: 0, y: 0 },
+          { x: state.scene.room_width_m, y: 0 },
+          { x: state.scene.room_width_m, y: state.scene.room_depth_m },
+          { x: 0, y: state.scene.room_depth_m },
+          { x: 0, y: 0 },
+        ].map(worldToScreen);
+        const roomPath = createSvg("path", {
+          d: linePath(roomOutline),
+          fill: "rgba(255,255,255,0.015)",
+          stroke: "var(--room)",
+          "stroke-width": "4",
+          "stroke-linejoin": "round",
+          class: "selectable",
+          "data-target": "room",
+          "data-action": "select",
+        });
+        if (state.scene.selected_element === "room") {
+          roomPath.setAttribute("filter", "drop-shadow(0 0 8px rgba(246, 221, 159, 0.55))");
+        }
+        svg.appendChild(roomPath);
+
+        const handle = worldToScreen({ x: state.scene.room_width_m, y: 0 });
+        svg.appendChild(
+          createSvg("rect", {
+            x: handle.x - 9,
+            y: handle.y - 9,
+            width: "18",
+            height: "18",
+            rx: "4",
+            fill: "#11181f",
+            stroke: "var(--handle)",
+            "stroke-width": "3",
+            class: "selectable",
+            "data-target": "room",
+            "data-action": "resize",
+          })
+        );
+
+        const label = createSvg("text", {
+          x: roomOutline[2].x - 92,
+          y: roomOutline[2].y + 20,
+          class: "label",
+        });
+        label.textContent = "Habitación";
+        svg.appendChild(label);
       }
 
       function drawWindow() {
@@ -412,7 +482,7 @@
             y1: start.y,
             x2: end.x,
             y2: end.y,
-            stroke: "#4fa4c2",
+            stroke: "var(--window)",
             "stroke-width": "10",
             "stroke-linecap": "round",
           })
@@ -422,7 +492,7 @@
             cx: center.x,
             cy: center.y,
             r: "7",
-            fill: "#fffdf8",
+            fill: "#11181f",
             stroke: selectionStroke("window"),
             "stroke-width": "4",
           })
@@ -433,8 +503,8 @@
           cx: end.x,
           cy: end.y,
           r: "9",
-          fill: "#fffdf8",
-          stroke: "#4fa4c2",
+          fill: "#11181f",
+          stroke: "var(--window)",
           "stroke-width": "3",
           class: "selectable",
           "data-target": "window",
@@ -454,13 +524,14 @@
       function drawDesk() {
         const desk = state.scene.elements.desk;
         const corners = rectangleCorners(desk).map(worldToScreen);
-        const handle = worldToScreen(rotationHandlePoint(desk, desk.depth_m / 2 + 0.35));
+        const rotateHandle = worldToScreen(rotationHandlePoint(desk, desk.depth_m / 2 + 0.35));
+        const resizeHandle = worldToScreen(deskResizeHandlePoint(desk));
         const center = worldToScreen({ x: desk.x_m, y: desk.y_m });
 
         const polygon = createSvg("path", {
           d: `${linePath([...corners, corners[0]])} Z`,
-          fill: "rgba(184, 64, 42, 0.14)",
-          stroke: "#b8402a",
+          fill: "var(--desk-fill)",
+          stroke: "var(--desk)",
           "stroke-width": "3",
           "stroke-linejoin": "round",
           class: "selectable",
@@ -468,7 +539,7 @@
           "data-action": "translate",
         });
         if (state.scene.selected_element === "desk") {
-          polygon.setAttribute("filter", "drop-shadow(0 0 6px rgba(240, 209, 123, 0.55))");
+          polygon.setAttribute("filter", "drop-shadow(0 0 6px rgba(246, 221, 159, 0.55))");
         }
         svg.appendChild(polygon);
         svg.appendChild(
@@ -476,7 +547,7 @@
             cx: center.x,
             cy: center.y,
             r: "6",
-            fill: "#fffdf8",
+            fill: "#11181f",
             stroke: selectionStroke("desk"),
             "stroke-width": "4",
           })
@@ -485,24 +556,39 @@
           createSvg("line", {
             x1: center.x,
             y1: center.y,
-            x2: handle.x,
-            y2: handle.y,
-            stroke: "#d18c21",
+            x2: rotateHandle.x,
+            y2: rotateHandle.y,
+            stroke: "var(--handle)",
             "stroke-width": "2.5",
             "stroke-dasharray": "4 4",
           })
         );
         svg.appendChild(
           createSvg("circle", {
-            cx: handle.x,
-            cy: handle.y,
+            cx: rotateHandle.x,
+            cy: rotateHandle.y,
             r: "9",
-            fill: "#fffdf8",
-            stroke: "#d18c21",
+            fill: "#11181f",
+            stroke: "var(--handle)",
             "stroke-width": "3",
             class: "selectable",
             "data-target": "desk",
             "data-action": "rotate",
+          })
+        );
+        svg.appendChild(
+          createSvg("rect", {
+            x: resizeHandle.x - 8,
+            y: resizeHandle.y - 8,
+            width: "16",
+            height: "16",
+            rx: "4",
+            fill: "#11181f",
+            stroke: "var(--handle)",
+            "stroke-width": "3",
+            class: "selectable",
+            "data-target": "desk",
+            "data-action": "resize",
           })
         );
 
@@ -511,7 +597,7 @@
           y: center.y - 12,
           class: "label",
         });
-        label.textContent = "Escritorio";
+        label.textContent = "Mesa";
         svg.appendChild(label);
       }
 
@@ -523,8 +609,8 @@
 
         const polygon = createSvg("path", {
           d: `${linePath([...corners, corners[0]])} Z`,
-          fill: "rgba(31, 107, 82, 0.16)",
-          stroke: "#1f6b52",
+          fill: "var(--monitor-fill)",
+          stroke: "var(--monitor)",
           "stroke-width": "3",
           "stroke-linejoin": "round",
           class: "selectable",
@@ -532,7 +618,7 @@
           "data-action": "translate",
         });
         if (state.scene.selected_element === "monitor") {
-          polygon.setAttribute("filter", "drop-shadow(0 0 6px rgba(240, 209, 123, 0.55))");
+          polygon.setAttribute("filter", "drop-shadow(0 0 6px rgba(246, 221, 159, 0.55))");
         }
         svg.appendChild(polygon);
         svg.appendChild(
@@ -540,7 +626,7 @@
             cx: center.x,
             cy: center.y,
             r: "5",
-            fill: "#fffdf8",
+            fill: "#11181f",
             stroke: selectionStroke("monitor"),
             "stroke-width": "4",
           })
@@ -551,7 +637,7 @@
             y1: center.y,
             x2: handle.x,
             y2: handle.y,
-            stroke: "#d18c21",
+            stroke: "var(--handle)",
             "stroke-width": "2",
             "stroke-dasharray": "3 3",
           })
@@ -561,8 +647,8 @@
             cx: handle.x,
             cy: handle.y,
             r: "8",
-            fill: "#fffdf8",
-            stroke: "#d18c21",
+            fill: "#11181f",
+            stroke: "var(--handle)",
             "stroke-width": "3",
             class: "selectable",
             "data-target": "monitor",
@@ -589,8 +675,8 @@
 
       function moveMonitorWithinDesk(monitor, desk) {
         const local = worldToLocal({ x: monitor.x_m, y: monitor.y_m }, { x: desk.x_m, y: desk.y_m }, desk.orientation_deg);
-        const maxX = Math.max(desk.width_m / 2 - 0.03, 0);
-        const maxY = Math.max(desk.depth_m / 2 - 0.03, 0);
+        const maxX = Math.max(desk.width_m / 2 - MONITOR_EDGE_MARGIN_M, 0);
+        const maxY = Math.max(desk.depth_m / 2 - MONITOR_EDGE_MARGIN_M, 0);
         const clampedLocal = {
           x: clamp(local.x, -maxX, maxX),
           y: clamp(local.y, -maxY, maxY),
@@ -599,6 +685,33 @@
         monitor.x_m = world.x;
         monitor.y_m = world.y;
         return monitor;
+      }
+
+      function syncWindowToRoom(scene) {
+        const windowElement = scene.elements.window;
+        const metadata = windowElement.metadata || {};
+        const wall = metadata.wall || "west";
+        const wallSpan = wall === "north" || wall === "south" ? scene.room_width_m : scene.room_depth_m;
+        windowElement.width_m = clamp(windowElement.width_m, WINDOW_MIN_WIDTH_M, wallSpan);
+        const halfWidth = windowElement.width_m / 2;
+        const centerRatio = clamp(Number(metadata.center_ratio || 0.5), 0, 1);
+        const axisValue = clamp(centerRatio * wallSpan, halfWidth, wallSpan - halfWidth);
+        metadata.center_ratio = axisValue / Math.max(wallSpan, 0.0001);
+        metadata.wall_span_m = wallSpan;
+        windowElement.metadata = metadata;
+        if (wall === "north") {
+          windowElement.x_m = axisValue;
+          windowElement.y_m = scene.room_depth_m;
+        } else if (wall === "south") {
+          windowElement.x_m = axisValue;
+          windowElement.y_m = 0;
+        } else if (wall === "east") {
+          windowElement.x_m = scene.room_width_m;
+          windowElement.y_m = axisValue;
+        } else {
+          windowElement.x_m = 0;
+          windowElement.y_m = axisValue;
+        }
       }
 
       function translateWindow(scene, drag, pointer) {
@@ -636,8 +749,8 @@
         const wallSpan = Number(metadata.wall_span_m || scene.room_depth_m);
         const centerAxis = wall === "north" || wall === "south" ? windowElement.x_m : windowElement.y_m;
         const pointerAxis = wall === "north" || wall === "south" ? pointer.x : pointer.y;
-        const maxWidth = Math.max(Math.min(centerAxis, wallSpan - centerAxis) * 2, 0.6);
-        windowElement.width_m = clamp(Math.abs(pointerAxis - centerAxis) * 2, 0.6, maxWidth);
+        const maxWidth = Math.max(Math.min(centerAxis, wallSpan - centerAxis) * 2, WINDOW_MIN_WIDTH_M);
+        windowElement.width_m = clamp(Math.abs(pointerAxis - centerAxis) * 2, WINDOW_MIN_WIDTH_M, maxWidth);
       }
 
       function translateDesk(scene, drag, pointer) {
@@ -657,6 +770,44 @@
         monitor.x_m = drag.startScene.elements.monitor.x_m + actualDx;
         monitor.y_m = drag.startScene.elements.monitor.y_m + actualDy;
         moveMonitorWithinDesk(monitor, desk);
+      }
+
+      function resizeDesk(scene, drag, pointer) {
+        const desk = scene.elements.desk;
+        const monitor = scene.elements.monitor;
+        const startDesk = drag.startScene.elements.desk;
+        const localPointer = worldToLocal(
+          pointer,
+          { x: startDesk.x_m, y: startDesk.y_m },
+          startDesk.orientation_deg
+        );
+        desk.width_m = clamp(Math.abs(localPointer.x) * 2, DESK_MIN_WIDTH_M, 2.2);
+        desk.depth_m = clamp(Math.abs(localPointer.y) * 2, DESK_MIN_DEPTH_M, 1.1);
+        const clampedCenter = clampDeskCenter(scene, desk, { x: startDesk.x_m, y: startDesk.y_m });
+        desk.x_m = clampedCenter.x;
+        desk.y_m = clampedCenter.y;
+        monitor.x_m = drag.startScene.elements.monitor.x_m;
+        monitor.y_m = drag.startScene.elements.monitor.y_m;
+        moveMonitorWithinDesk(monitor, desk);
+      }
+
+      function resizeRoom(scene, drag, pointer) {
+        const widthDelta = pointer.x - drag.startPointer.x;
+        const depthDelta = -(pointer.y - drag.startPointer.y);
+        scene.room_width_m = clamp(drag.startScene.room_width_m + widthDelta, ROOM_MIN_WIDTH_M, 10.0);
+        scene.room_depth_m = clamp(drag.startScene.room_depth_m + depthDelta, ROOM_MIN_DEPTH_M, 10.0);
+        syncRoomElement(scene);
+        const desk = scene.elements.desk;
+        const clampedDeskCenter = clampDeskCenter(scene, desk, {
+          x: drag.startScene.elements.desk.x_m,
+          y: drag.startScene.elements.desk.y_m,
+        });
+        desk.x_m = clampedDeskCenter.x;
+        desk.y_m = clampedDeskCenter.y;
+        scene.elements.monitor.x_m = drag.startScene.elements.monitor.x_m;
+        scene.elements.monitor.y_m = drag.startScene.elements.monitor.y_m;
+        moveMonitorWithinDesk(scene.elements.monitor, desk);
+        syncWindowToRoom(scene);
       }
 
       function pointerCompassAngle(point, center) {
@@ -728,7 +879,9 @@
         nextScene.pending_preview = true;
         nextScene.last_action = drag.action;
 
-        if (drag.target === "window" && drag.action === "translate") {
+        if (drag.target === "room" && drag.action === "resize") {
+          resizeRoom(nextScene, drag, pointer);
+        } else if (drag.target === "window" && drag.action === "translate") {
           translateWindow(nextScene, drag, pointer);
         } else if (drag.target === "window" && drag.action === "resize") {
           resizeWindow(nextScene, drag, pointer);
@@ -736,6 +889,8 @@
           translateDesk(nextScene, drag, pointer);
         } else if (drag.target === "desk" && drag.action === "rotate") {
           rotateDesk(nextScene, drag, pointer);
+        } else if (drag.target === "desk" && drag.action === "resize") {
+          resizeDesk(nextScene, drag, pointer);
         } else if (drag.target === "monitor" && drag.action === "translate") {
           translateMonitor(nextScene, drag, pointer);
         } else if (drag.target === "monitor" && drag.action === "rotate") {
@@ -759,7 +914,7 @@
           event_seq: state.eventSeq,
           status: "commit",
         });
-        setHint("Analisis actualizado tras confirmar el gesto.");
+        setHint("Análisis actualizado tras confirmar el gesto.");
         state.drag = null;
       }
 
@@ -814,7 +969,7 @@
         }
         state.drag = drag;
         svg.classList.add("dragging");
-        setHint("Soltando el raton se recalcula la simulacion.");
+        setHint("Al soltar el ratón se recalcula la simulación.");
       }
 
       function handlePointerMove(event) {
@@ -862,6 +1017,8 @@
         if (!incomingScene) {
           return;
         }
+        syncRoomElement(incomingScene);
+        syncWindowToRoom(incomingScene);
         if (!state.drag) {
           state.scene = incomingScene;
         }

@@ -7,6 +7,7 @@ from typing import Literal
 
 LocationMode = Literal["city", "manual"]
 WeatherMode = Literal["forecast", "theoretical_clear_sky"]
+DominantRisk = Literal["glare", "heat", "ergonomics", "balanced"]
 
 
 @dataclass(slots=True)
@@ -104,6 +105,7 @@ class Recommendation:
     title: str
     message: str
     delta_score: float
+    reason: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +132,27 @@ class SeasonalSummary:
     afternoon_comfort: float
 
 
+@dataclass(frozen=True, slots=True)
+class TimeWindowSummary:
+    label: str
+    start_time_label: str
+    end_time_label: str
+    mean_comfort: float
+    peak_glare: float
+    peak_heat: float
+
+
+@dataclass(frozen=True, slots=True)
+class ScenarioDiagnosis:
+    dominant_risk: DominantRisk
+    primary_message: str
+    confidence_message: str
+    best_window: TimeWindowSummary | None
+    worst_window: TimeWindowSummary | None
+    high_glare_windows: list[TimeWindowSummary] = field(default_factory=list)
+    high_heat_windows: list[TimeWindowSummary] = field(default_factory=list)
+
+
 @dataclass(slots=True)
 class ScenarioResult:
     request: AnalysisRequest
@@ -141,4 +164,5 @@ class ScenarioResult:
     alerts: list[str]
     recommendations: list[Recommendation]
     weather_context: WeatherContext
+    diagnosis: ScenarioDiagnosis
     seasonal_summary: list[SeasonalSummary] = field(default_factory=list)

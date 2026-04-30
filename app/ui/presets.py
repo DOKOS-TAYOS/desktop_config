@@ -1,24 +1,27 @@
 from __future__ import annotations
 
-
-ROOM_PRESETS = {
+ROOM_PRESETS: dict[str, dict[str, float]] = {
     "Despacho estándar": {"width_m": 4.0, "depth_m": 3.5, "ceiling_height_m": 2.6},
-    "Habitación pequeña": {"width_m": 3.0, "depth_m": 2.6, "ceiling_height_m": 2.5},
+    "Despacho compacto": {"width_m": 3.2, "depth_m": 2.7, "ceiling_height_m": 2.5},
+    "Dormitorio pequeño": {"width_m": 3.0, "depth_m": 2.6, "ceiling_height_m": 2.5},
+    "Dormitorio principal": {"width_m": 3.8, "depth_m": 3.2, "ceiling_height_m": 2.55},
+    "Salón adaptado": {"width_m": 4.8, "depth_m": 3.7, "ceiling_height_m": 2.6},
+    "Habitación alargada": {"width_m": 5.0, "depth_m": 2.8, "ceiling_height_m": 2.5},
 }
 
-WINDOW_PRESETS = {
+WINDOW_PRESETS: dict[str, int] = {
     "Norte": 0,
     "Este": 90,
     "Sur": 180,
     "Oeste": 270,
 }
 
-MONITOR_PRESETS = {
+MONITOR_PRESETS: dict[str, dict[str, float]] = {
     '24"': {"diagonal_in": 24.0, "center_height_m": 1.12, "tilt_deg": -5.0},
     '27"': {"diagonal_in": 27.0, "center_height_m": 1.16, "tilt_deg": -5.0},
 }
 
-DESK_LAYOUT_PRESETS = {
+DESK_LAYOUT_PRESETS: dict[str, dict[str, float]] = {
     "Centrado": {"x_ratio": 0.5, "y_ratio": 0.5, "orientation_deg": 180},
     "Pegado a pared": {"x_ratio": 0.5, "y_ratio": 0.22, "orientation_deg": 180},
 }
@@ -42,7 +45,6 @@ def default_sidebar_state() -> dict[str, object]:
         "room_depth_m": 3.5,
         "room_ceiling_height_m": 2.6,
         "window_orientation_deg": 270,
-        "window_width_m": 1.6,
         "desk_x_m": 2.0,
         "desk_y_m": 1.75,
         "desk_width_m": 1.4,
@@ -79,7 +81,9 @@ def apply_presets(
         "room_depth_m": room["depth_m"],
         "room_ceiling_height_m": room["ceiling_height_m"],
         "window_orientation_deg": float(window_orientation),
-        "window_width_m": min(1.6, room["width_m"] if window_orientation in (0, 180) else room["depth_m"]),
+        "window_width_m": min(
+            1.8, room["width_m"] if window_orientation in (0, 180) else room["depth_m"]
+        ),
         "desk_x_m": desk_x,
         "desk_y_m": desk_y,
         "desk_width_m": 1.4,

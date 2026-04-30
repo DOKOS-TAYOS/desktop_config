@@ -39,7 +39,9 @@ def test_weather_context_handles_null_values_without_crashing(monkeypatch):
                 }
             }
 
-    monkeypatch.setattr("app.services.weather.requests.get", lambda *args, **kwargs: DummyResponse())
+    monkeypatch.setattr(
+        "app.services.weather.requests.get", lambda *args, **kwargs: DummyResponse()
+    )
     get_weather_context.cache_clear()
 
     context = get_weather_context(

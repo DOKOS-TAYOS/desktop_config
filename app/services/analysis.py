@@ -7,10 +7,13 @@ from time import perf_counter
 
 from app.domain.models import (
     AnalysisRequest,
+    DominantRisk,
     Recommendation,
+    ScenarioDiagnosis,
     ScenarioResult,
     SeasonalSummary,
     TimeSlotResult,
+    TimeWindowSummary,
     WeatherContext,
 )
 from app.domain.validation import validate_request
@@ -38,12 +41,15 @@ from app.utils.geometry import (
     window_center_point,
 )
 from app.utils.logging_utils import get_logger, log_event
+from typing import cast
 
 
 logger = get_logger(__name__)
 
 
-def _sun_vector_from_ground(azimuth_deg: float, elevation_deg: float) -> tuple[float, float, float]:
+def _sun_vector_from_ground(
+    azimuth_deg: float, elevation_deg: float
+) -> tuple[float, float, float]:
     elevation_rad = math.radians(elevation_deg)
     azimuth_vector = compass_to_unit(azimuth_deg)
     horizontal_scale = math.cos(elevation_rad)
@@ -54,7 +60,9 @@ def _sun_vector_from_ground(azimuth_deg: float, elevation_deg: float) -> tuple[f
     )
 
 
-def _sun_enters_window(request: AnalysisRequest, azimuth_deg: float, elevation_deg: float) -> bool:
+def _sun_enters_window(
+    request: AnalysisRequest, azimuth_deg: float, elevation_deg: float
+) -> bool:
     if elevation_deg <= 0:
         return False
     return smallest_angle_deg(azimuth_deg, request.window.orientation_deg) <= 90
@@ -62,19 +70,32 @@ def _sun_enters_window(request: AnalysisRequest, azimuth_deg: float, elevation_d
 
 def _ergonomic_risk(request: AnalysisRequest) -> float:
     inward_light_direction = (request.window.orientation_deg + 180) % 360
-    side_lighting_delta = smallest_angle_deg(request.monitor.orientation_deg, inward_light_direction)
+    side_lighting_delta = smallest_angle_deg(
+        request.monitor.orientation_deg, inward_light_direction
+    )
     side_lighting_risk = abs(side_lighting_delta - 90) / 90 * 45
     monitor_alignment_risk = (
-        smallest_angle_deg(request.monitor.orientation_deg, request.desk.orientation_deg) / 90 * 25
+        smallest_angle_deg(
+            request.monitor.orientation_deg, request.desk.orientation_deg
+        )
+        / 90
+        * 25
     )
     monitor_geometry = build_monitor_geometry(request.monitor)
     monitor_top_height = request.monitor.center_height_m + monitor_geometry.height_m / 2
     preferred_eye_height = monitor_top_height - 0.05
-    eye_height_risk = min(abs(request.ergonomic.eye_height_m - preferred_eye_height) / 0.25, 1.0) * 20
-    lateral_offset = abs(request.monitor.x_m - request.desk.x_m) + abs(request.monitor.y_m - request.desk.y_m)
+    eye_height_risk = (
+        min(abs(request.ergonomic.eye_height_m - preferred_eye_height) / 0.25, 1.0) * 20
+    )
+    lateral_offset = abs(request.monitor.x_m - request.desk.x_m) + abs(
+        request.monitor.y_m - request.desk.y_m
+    )
     offset_risk = min(lateral_offset / 0.35, 1.0) * 10
     return round(
-        min(100.0, side_lighting_risk + monitor_alignment_risk + eye_height_risk + offset_risk),
+        min(
+            100.0,
+            side_lighting_risk + monitor_alignment_risk + eye_height_risk + offset_risk,
+        ),
         1,
     )
 
@@ -94,10 +115,14 @@ def _reflection_alignment_deg(
     return angle_between3(normalize3(reflected), normalize3(eye_vector))
 
 
-def _eye_position(request: AnalysisRequest, monitor_geometry) -> tuple[float, float, float]:
+def _eye_position(
+    request: AnalysisRequest, monitor_geometry
+) -> tuple[float, float, float]:
     return (
-        monitor_geometry.center[0] + monitor_geometry.normal[0] * request.ergonomic.viewing_distance_m,
-        monitor_geometry.center[1] + monitor_geometry.normal[1] * request.ergonomic.viewing_distance_m,
+        monitor_geometry.center[0]
+        + monitor_geometry.normal[0] * request.ergonomic.viewing_distance_m,
+        monitor_geometry.center[1]
+        + monitor_geometry.normal[1] * request.ergonomic.viewing_distance_m,
         request.ergonomic.eye_height_m,
     )
 
@@ -117,6 +142,141 @@ def _build_explanation(
     return "La luz entra en la habitación, pero sin impacto directo crítico sobre la pantalla."
 
 
+def _build_window_summary(
+    label: str,
+    slots: list[TimeSlotResult],
+) -> TimeWindowSummary | None:
+    if not slots:
+        return None
+    return TimeWindowSummary(
+        label=label,
+        start_time_label=slots[0].when_local.strftime("%H:%M"),
+        end_time_label=slots[-1].when_local.strftime("%H:%M"),
+        mean_comfort=round(sum(slot.comfort_score for slot in slots) / len(slots), 1),
+        peak_glare=max(slot.glare_score for slot in slots),
+        peak_heat=max(slot.heat_score for slot in slots),
+    )
+
+
+def _daily_window_summaries(slots: list[TimeSlotResult]) -> list[TimeWindowSummary]:
+    window_specs: list[tuple[str, int, int]] = [
+        ("Mañana", 8, 12),
+        ("Mediodía", 12, 16),
+        ("Tarde", 16, 20),
+        ("Últimas horas", 20, 24),
+    ]
+    summaries: list[TimeWindowSummary] = []
+    for label, start_hour, end_hour in window_specs:
+        window_slots = [
+            slot for slot in slots if start_hour <= slot.when_local.hour < end_hour
+        ]
+        summary = _build_window_summary(label, window_slots)
+        if summary is not None:
+            summaries.append(summary)
+    return summaries
+
+
+def _period_indexes_above_threshold(
+    slots: list[TimeSlotResult],
+    attribute: str,
+    threshold: float,
+) -> list[tuple[int, int]]:
+    periods: list[tuple[int, int]] = []
+    start_index: int | None = None
+    for index, slot in enumerate(slots):
+        value = getattr(slot, attribute)
+        if value >= threshold and start_index is None:
+            start_index = index
+        elif value < threshold and start_index is not None:
+            periods.append((start_index, index - 1))
+            start_index = None
+    if start_index is not None and slots:
+        periods.append((start_index, len(slots) - 1))
+    return periods
+
+
+def _windows_above_threshold(
+    slots: list[TimeSlotResult],
+    attribute: str,
+    threshold: float,
+) -> list[TimeWindowSummary]:
+    windows: list[TimeWindowSummary] = []
+    for start_index, end_index in _period_indexes_above_threshold(
+        slots, attribute, threshold
+    ):
+        period_slots = slots[start_index : end_index + 1]
+        label = f"{period_slots[0].when_local.strftime('%H:%M')}-{period_slots[-1].when_local.strftime('%H:%M')}"
+        summary = _build_window_summary(label, period_slots)
+        if summary is not None:
+            windows.append(summary)
+    return windows
+
+
+def _dominant_risk(
+    glare_score: float,
+    heat_score: float,
+    ergonomic_score: float,
+) -> DominantRisk:
+    ranked = sorted(
+        (
+            ("glare", glare_score),
+            ("heat", heat_score),
+            ("ergonomics", ergonomic_score),
+        ),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    if ranked[0][1] < 25 or ranked[0][1] - ranked[1][1] < 8:
+        return "balanced"
+    return cast(DominantRisk, ranked[0][0])
+
+
+def _primary_message(
+    dominant_risk: DominantRisk,
+    worst_window: TimeWindowSummary | None,
+) -> str:
+    window_label = (
+        worst_window.label.lower()
+        if worst_window is not None
+        else "las horas más delicadas"
+    )
+    if dominant_risk == "glare":
+        return f"El principal problema es el reflejo, sobre todo en la {window_label}."
+    if dominant_risk == "heat":
+        return f"El principal problema es el calor o el sol directo, sobre todo en la {window_label}."
+    if dominant_risk == "ergonomics":
+        return "El principal límite es ergonómico: la orientación y el encaje entre mesa y monitor pesan más que el sol."
+    return "No hay un riesgo dominante claro: la configuración está razonablemente equilibrada para este modelo."
+
+
+def _confidence_message(weather_context: WeatherContext) -> str:
+    if weather_context.mode == "forecast":
+        return "Confianza media-alta: el análisis usa pronóstico real disponible para esa fecha."
+    return "Confianza moderada: la geometría es útil, pero el clima se ha estimado con cielo despejado teórico."
+
+
+def _build_diagnosis(
+    slots: list[TimeSlotResult],
+    glare_score: float,
+    heat_score: float,
+    ergonomic_score: float,
+    weather_context: WeatherContext,
+) -> ScenarioDiagnosis:
+    windows = _daily_window_summaries(slots)
+    best_window = max(windows, key=lambda item: item.mean_comfort) if windows else None
+    worst_window = min(windows, key=lambda item: item.mean_comfort) if windows else None
+    dominant_risk = _dominant_risk(glare_score, heat_score, ergonomic_score)
+    return ScenarioDiagnosis(
+        dominant_risk=dominant_risk,
+        primary_message=_primary_message(dominant_risk, worst_window),
+        confidence_message=_confidence_message(weather_context),
+        best_window=best_window,
+        worst_window=worst_window,
+        high_glare_windows=_windows_above_threshold(slots, "glare_score", 60.0),
+        high_heat_windows=_windows_above_threshold(slots, "heat_score", 55.0),
+    )
+
+
 def analyze_scenario_at_time(
     request: AnalysisRequest,
     when_local: datetime,
@@ -130,7 +290,9 @@ def analyze_scenario_at_time(
         when_local=when_local,
     )
     ergonomic_score = _ergonomic_risk(request)
-    weather_context = weather_context or build_theoretical_weather_context(request.location.timezone)
+    weather_context = weather_context or build_theoretical_weather_context(
+        request.location.timezone
+    )
     if solar.elevation_deg <= 0:
         comfort = round(max(0.0, 100 - DEFAULT_WEIGHTS.ergonomics * ergonomic_score), 1)
         return TimeSlotResult(
@@ -191,7 +353,9 @@ def analyze_scenario_at_time(
     reflection_alignment = 90.0
     front_alignment = 180.0
     if monitor_hit and monitor_hit_point is not None:
-        front_alignment = angle_between3(incoming_ray, scale3(monitor_geometry.normal, -1))
+        front_alignment = angle_between3(
+            incoming_ray, scale3(monitor_geometry.normal, -1)
+        )
         reflection_alignment = _reflection_alignment_deg(
             incoming_ray, monitor_hit_point, request, monitor_geometry
         )
@@ -204,7 +368,9 @@ def analyze_scenario_at_time(
     monitor_near_miss = distance_to_monitor <= 0.25
     eye_position = _eye_position(request, monitor_geometry)
     eye_distance = distance_point_to_ray(eye_position, window_origin, incoming_ray)
-    backlighting_alignment = angle_between3(incoming_ray, scale3(monitor_geometry.normal, -1))
+    backlighting_alignment = angle_between3(
+        incoming_ray, scale3(monitor_geometry.normal, -1)
+    )
 
     if monitor_hit:
         reflection_factor = max(0.0, 1 - reflection_alignment / 25)
@@ -223,17 +389,26 @@ def analyze_scenario_at_time(
 
     cloud_factor = 1 - min(max(weather_sample.cloud_cover_pct, 0.0), 100.0) / 100 * 0.6
     temperature_factor = min(max((weather_sample.temperature_c - 18) / 14, 0.0), 1.0)
-    direct_radiation_factor = min(max((weather_sample.direct_radiation_wm2 or 0.0) / 850, 0.35), 1.0)
+    if weather_sample.direct_radiation_wm2 is None:
+        direct_radiation_factor = min(max(800.0 / 850, 0.35), 1.0)
+    else:
+        direct_radiation_factor = min(
+            max(weather_sample.direct_radiation_wm2 / 850, 0.0), 1.0
+        )
     solar_strength = max(math.sin(math.radians(solar.elevation_deg)), 0.0)
     if desk_hit:
         heat_score = min(
             100.0,
-            (40 + 30 * solar_strength + 15 * temperature_factor) * cloud_factor * direct_radiation_factor,
+            (40 + 30 * solar_strength + 15 * temperature_factor)
+            * cloud_factor
+            * direct_radiation_factor,
         )
     elif monitor_hit:
         heat_score = min(
             100.0,
-            (25 + 20 * solar_strength + 10 * temperature_factor) * cloud_factor * direct_radiation_factor,
+            (25 + 20 * solar_strength + 10 * temperature_factor)
+            * cloud_factor
+            * direct_radiation_factor,
         )
     else:
         heat_score = 10.0 * cloud_factor * solar_strength
@@ -262,7 +437,9 @@ def analyze_scenario_at_time(
         direct_sun_on_desk=desk_hit,
         direct_sun_on_monitor=monitor_hit,
         screen_zone_label=screen_zone_label,
-        explanation=_build_explanation(solar_enters, desk_hit, monitor_hit, screen_zone_label),
+        explanation=_build_explanation(
+            solar_enters, desk_hit, monitor_hit, screen_zone_label
+        ),
     )
 
 
@@ -272,40 +449,35 @@ def _aggregate_risk(values: list[float]) -> float:
     return round(0.6 * max(values) + 0.4 * (sum(values) / len(values)), 1)
 
 
-def _periods_above_threshold(
-    slots: list[TimeSlotResult], attribute: str, threshold: float
-) -> list[tuple[str, str]]:
-    periods: list[tuple[str, str]] = []
-    start = None
-    for slot in slots:
-        value = getattr(slot, attribute)
-        if value >= threshold and start is None:
-            start = slot.when_local
-        elif value < threshold and start is not None:
-            periods.append((start.strftime("%H:%M"), slot.when_local.strftime("%H:%M")))
-            start = None
-    if start is not None and slots:
-        periods.append((start.strftime("%H:%M"), slots[-1].when_local.strftime("%H:%M")))
-    return periods
-
-
-def _build_alerts(slots: list[TimeSlotResult], weather_context: WeatherContext) -> list[str]:
+def _build_alerts(
+    slots: list[TimeSlotResult], weather_context: WeatherContext
+) -> list[str]:
     alerts: list[str] = []
-    glare_periods = _periods_above_threshold(slots, "glare_score", 60)
-    heat_periods = _periods_above_threshold(slots, "heat_score", 55)
-    if glare_periods:
-        start, end = glare_periods[0]
-        alerts.append(f"Riesgo alto de reflejo entre {start} y {end}.")
-    if heat_periods:
-        start, end = heat_periods[0]
-        alerts.append(f"Sol directo o calor fuerte entre {start} y {end}.")
+    glare_windows = _windows_above_threshold(slots, "glare_score", 60.0)
+    heat_windows = _windows_above_threshold(slots, "heat_score", 55.0)
+    if glare_windows:
+        first_window = glare_windows[0]
+        alerts.append(
+            f"Riesgo alto de reflejo entre {first_window.start_time_label} y {first_window.end_time_label}."
+        )
+    if heat_windows:
+        first_window = heat_windows[0]
+        alerts.append(
+            f"Sol directo o calor fuerte entre {first_window.start_time_label} y {first_window.end_time_label}."
+        )
     if weather_context.mode == "theoretical_clear_sky" and weather_context.reason:
         alerts.append(f"Clima en modo teórico: {weather_context.reason}")
     return alerts
 
 
-def _seasonal_bucket_mean(slots: list[TimeSlotResult], start_hour: int, end_hour: int) -> float:
-    bucket = [slot.comfort_score for slot in slots if start_hour <= slot.when_local.hour < end_hour]
+def _seasonal_bucket_mean(
+    slots: list[TimeSlotResult], start_hour: int, end_hour: int
+) -> float:
+    bucket = [
+        slot.comfort_score
+        for slot in slots
+        if start_hour <= slot.when_local.hour < end_hour
+    ]
     if not bucket:
         return 0.0
     return round(sum(bucket) / len(bucket), 1)
@@ -316,7 +488,9 @@ def build_seasonal_summary(request: AnalysisRequest) -> list[SeasonalSummary]:
     for season in ("invierno", "primavera", "verano", "otono"):
         seasonal_request = AnalysisRequest(
             location=request.location,
-            analysis_date=representative_date_for_season(request.analysis_date.year, season),
+            analysis_date=representative_date_for_season(
+                request.analysis_date.year, season
+            ),
             room=request.room,
             window=request.window,
             desk=request.desk,
@@ -329,7 +503,9 @@ def build_seasonal_summary(request: AnalysisRequest) -> list[SeasonalSummary]:
             analyze_scenario_at_time(
                 seasonal_request,
                 when_local=slot_time,
-                weather_context=build_theoretical_weather_context(request.location.timezone),
+                weather_context=build_theoretical_weather_context(
+                    request.location.timezone
+                ),
             )
             for slot_time in generate_day_times(
                 seasonal_request.analysis_date,
@@ -420,10 +596,16 @@ def analyze_scenario(
                 title="Base actual",
                 message="Esta es la evaluación de tu configuración actual.",
                 delta_score=0.0,
+                reason="Sirve como línea base para comparar la propuesta recomendada.",
             )
         ],
         weather_context=weather_context,
-        seasonal_summary=build_seasonal_summary(request) if request.include_seasonal_summary else [],
+        seasonal_summary=build_seasonal_summary(request)
+        if request.include_seasonal_summary
+        else [],
+        diagnosis=_build_diagnosis(
+            slots, glare_score, heat_score, ergonomic_score, weather_context
+        ),
     )
     log_event(
         logger,

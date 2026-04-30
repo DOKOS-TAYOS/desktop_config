@@ -44,6 +44,9 @@ This project turns those tradeoffs into a simple, explainable planning tool.
 ### Local run
 
 ```bash
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
@@ -54,6 +57,14 @@ Recommended target runtime: Python 3.11+. The project was verified in this works
 
 ```bash
 pytest
+```
+
+### Run type checks
+
+`pyright` is configured to use the project-local `.venv` and the repository root as the import base for `app.*`.
+
+```bash
+pyright
 ```
 
 ### Logging

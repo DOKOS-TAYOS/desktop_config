@@ -18,7 +18,9 @@ def test_scene_roundtrip_preserves_request_geometry(base_request):
 
     assert roundtrip.room.width_m == pytest.approx(base_request.room.width_m)
     assert roundtrip.room.depth_m == pytest.approx(base_request.room.depth_m)
-    assert roundtrip.window.orientation_deg == pytest.approx(base_request.window.orientation_deg)
+    assert roundtrip.window.orientation_deg == pytest.approx(
+        base_request.window.orientation_deg
+    )
     assert roundtrip.window.width_m == pytest.approx(base_request.window.width_m)
     assert roundtrip.desk.x_m == pytest.approx(base_request.desk.x_m)
     assert roundtrip.desk.y_m == pytest.approx(base_request.desk.y_m)
@@ -31,7 +33,9 @@ def test_window_translate_clamps_to_wall_span(base_request):
 
     moved = apply_editor_delta(
         scene,
-        EditorDelta(target="window", action="translate", dx_m=99.0, dy_m=99.0, preview=False),
+        EditorDelta(
+            target="window", action="translate", dx_m=99.0, dy_m=99.0, preview=False
+        ),
     )
     updated_request = scene_to_request(moved, base_request)
 
@@ -47,7 +51,9 @@ def test_desk_translate_stays_inside_room_and_keeps_monitor_valid(base_request):
 
     moved = apply_editor_delta(
         scene,
-        EditorDelta(target="desk", action="translate", dx_m=50.0, dy_m=50.0, preview=False),
+        EditorDelta(
+            target="desk", action="translate", dx_m=50.0, dy_m=50.0, preview=False
+        ),
     )
     updated_request = scene_to_request(moved, base_request)
 
@@ -70,7 +76,9 @@ def test_preview_delta_marks_scene_dirty_without_commit(base_request):
 
     preview = apply_editor_delta(
         scene,
-        EditorDelta(target="monitor", action="translate", dx_m=0.1, dy_m=0.1, preview=True),
+        EditorDelta(
+            target="monitor", action="translate", dx_m=0.1, dy_m=0.1, preview=True
+        ),
     )
 
     assert preview.is_dirty is True
@@ -83,8 +91,50 @@ def test_committed_delta_advances_commit_version(base_request):
 
     committed = apply_editor_delta(
         scene,
-        EditorDelta(target="monitor", action="rotate", rotation_deg=15.0, preview=False),
+        EditorDelta(
+            target="monitor", action="rotate", rotation_deg=15.0, preview=False
+        ),
     )
 
     assert committed.pending_preview is False
     assert committed.commit_version == scene.commit_version + 1
+
+
+def test_room_resize_reclamps_desk_and_monitor_when_room_shrinks(base_request):
+    scene = build_scene_state(base_request)
+
+    resized = apply_editor_delta(
+        scene,
+        EditorDelta(
+            target="room",
+            action="resize",
+            size_dx_m=-1.6,
+            size_dy_m=-1.0,
+            preview=False,
+        ),
+    )
+    updated_request = scene_to_request(resized, base_request)
+
+    validate_request(updated_request)
+    assert updated_request.room.width_m < base_request.room.width_m
+    assert updated_request.room.depth_m < base_request.room.depth_m
+
+
+def test_desk_resize_keeps_monitor_inside_desk(base_request):
+    scene = build_scene_state(base_request)
+
+    resized = apply_editor_delta(
+        scene,
+        EditorDelta(
+            target="desk",
+            action="resize",
+            size_dx_m=-0.4,
+            size_dy_m=-0.15,
+            preview=False,
+        ),
+    )
+    updated_request = scene_to_request(resized, base_request)
+
+    validate_request(updated_request)
+    assert updated_request.desk.width_m < base_request.desk.width_m
+    assert updated_request.desk.depth_m < base_request.desk.depth_m

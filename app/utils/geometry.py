@@ -84,19 +84,25 @@ def scale3(
     return (vector[0] * scalar, vector[1] * scalar, vector[2] * scalar)
 
 
-def angle_between3(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+def angle_between3(
+    a: tuple[float, float, float], b: tuple[float, float, float]
+) -> float:
     denominator = max(norm3(a) * norm3(b), EPSILON)
     cosine = max(-1.0, min(1.0, dot3(a, b) / denominator))
     return math.degrees(math.acos(cosine))
 
 
-def rectangle_axes(orientation_deg: float) -> tuple[tuple[float, float], tuple[float, float]]:
+def rectangle_axes(
+    orientation_deg: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
     forward = compass_to_unit(orientation_deg)
     right = compass_to_unit(orientation_deg + 90)
     return right, forward
 
 
-def rotate_point(point: tuple[float, float], center: tuple[float, float], angle_deg: float) -> tuple[float, float]:
+def rotate_point(
+    point: tuple[float, float], center: tuple[float, float], angle_deg: float
+) -> tuple[float, float]:
     radians = math.radians(angle_deg)
     dx = point[0] - center[0]
     dy = point[1] - center[1]
@@ -116,7 +122,9 @@ def world_to_local(
 
 
 def local_to_world(
-    local_point: tuple[float, float], center: tuple[float, float], orientation_deg: float
+    local_point: tuple[float, float],
+    center: tuple[float, float],
+    orientation_deg: float,
 ) -> tuple[float, float]:
     right, forward = rectangle_axes(orientation_deg)
     return (
@@ -125,7 +133,9 @@ def local_to_world(
     )
 
 
-def rectangle_half_extents(width_m: float, depth_m: float, orientation_deg: float) -> tuple[float, float]:
+def rectangle_half_extents(
+    width_m: float, depth_m: float, orientation_deg: float
+) -> tuple[float, float]:
     right, forward = rectangle_axes(orientation_deg)
     half_width = width_m / 2
     half_depth = depth_m / 2
@@ -134,7 +144,9 @@ def rectangle_half_extents(width_m: float, depth_m: float, orientation_deg: floa
     return half_extent_x, half_extent_y
 
 
-def point_in_rotated_rectangle(point: tuple[float, float], rectangle: Rectangle2D) -> bool:
+def point_in_rotated_rectangle(
+    point: tuple[float, float], rectangle: Rectangle2D
+) -> bool:
     right, forward = rectangle_axes(rectangle.orientation_deg)
     dx = point[0] - rectangle.center[0]
     dy = point[1] - rectangle.center[1]
@@ -179,7 +191,9 @@ def distance_point_to_ray(
     return norm3(delta)
 
 
-def window_center_point(room: RoomConfig, window: WindowConfig) -> tuple[float, float, float]:
+def window_center_point(
+    room: RoomConfig, window: WindowConfig
+) -> tuple[float, float, float]:
     orientation = normalize_angle_deg(window.orientation_deg)
     center_height = window.sill_height_m + window.height_m / 2
     if orientation == 0:
@@ -276,7 +290,9 @@ def intersect_ray_with_monitor(
     if t < 0:
         return False, None, None
     hit_point = add3(ray_origin, scale3(ray_direction, t))
-    local_x = dot3(subtract3(hit_point, monitor_geometry.center), monitor_geometry.right)
+    local_x = dot3(
+        subtract3(hit_point, monitor_geometry.center), monitor_geometry.right
+    )
     local_y = dot3(subtract3(hit_point, monitor_geometry.center), monitor_geometry.up)
     within_bounds = (
         abs(local_x) <= monitor_geometry.width_m / 2 + EPSILON

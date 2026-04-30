@@ -42,12 +42,7 @@ class SidebarSubmission:
 
 
 def _compass_label(value: int) -> str:
-    return {
-        0: "Norte",
-        90: "Este",
-        180: "Sur",
-        270: "Oeste",
-    }[value]
+    return {0: "Norte", 90: "Este", 180: "Sur", 270: "Oeste"}[value]
 
 
 def request_to_session_patch(request: AnalysisRequest) -> dict[str, object]:
@@ -122,7 +117,7 @@ def _resolve_location() -> LocationInput:
                 city_query=st.session_state["city_query"].strip(),
             )
             raise ValidationError(
-                "No he podido resolver esa ciudad. Prueba otro nombre o usa latitud/longitud."
+                "No he podido resolver esa ciudad. Prueba otro nombre o usa latitud y longitud."
             )
         return location
     return LocationInput(
@@ -177,14 +172,24 @@ def build_request_from_session() -> AnalysisRequest:
 
 
 def _render_presets() -> bool:
-    with st.expander("Presets utiles", expanded=True):
-        room_preset = st.selectbox("Habitacion", list(ROOM_PRESETS), key="room_preset")
-        window_preset = st.selectbox("Ventana", list(WINDOW_PRESETS), key="window_preset")
-        monitor_preset = st.selectbox("Monitor", list(MONITOR_PRESETS), key="monitor_preset")
-        desk_layout_preset = st.selectbox("Escritorio", list(DESK_LAYOUT_PRESETS), key="desk_layout_preset")
+    with st.expander("Presets útiles", expanded=True):
+        room_preset = st.selectbox("Habitación", list(ROOM_PRESETS), key="room_preset")
+        window_preset = st.selectbox(
+            "Ventana", list(WINDOW_PRESETS), key="window_preset"
+        )
+        monitor_preset = st.selectbox(
+            "Monitor", list(MONITOR_PRESETS), key="monitor_preset"
+        )
+        desk_layout_preset = st.selectbox(
+            "Distribución de la mesa",
+            list(DESK_LAYOUT_PRESETS),
+            key="desk_layout_preset",
+        )
         apply_clicked = st.button("Aplicar presets", width="stretch")
         if apply_clicked:
-            patch = apply_presets(room_preset, window_preset, monitor_preset, desk_layout_preset)
+            patch = apply_presets(
+                room_preset, window_preset, monitor_preset, desk_layout_preset
+            )
             patch["window_center_ratio"] = 0.5
             for key, value in patch.items():
                 st.session_state[key] = value
@@ -201,10 +206,10 @@ def _render_presets() -> bool:
 
 
 def _render_location_and_weather() -> None:
-    st.subheader("Ubicacion y fecha")
+    st.subheader("Ubicación y fecha")
     st.radio("Modo", ["Ciudad", "Manual"], key="location_mode", horizontal=True)
     if st.session_state["location_mode"] == "Ciudad":
-        st.text_input("Ciudad o ciudad, pais", key="city_query")
+        st.text_input("Ciudad o ciudad, país", key="city_query")
     else:
         col1, col2 = st.columns(2)
         with col1:
@@ -227,68 +232,160 @@ def _render_location_and_weather() -> None:
             )
         st.text_input("Zona horaria IANA", key="manual_timezone")
 
-    st.date_input("Fecha de analisis", key="analysis_date")
+    st.date_input("Fecha de análisis", key="analysis_date")
     st.checkbox("Intentar clima real con Open-Meteo", key="use_live_weather")
-    st.checkbox("Anadir resumen estacional", key="include_seasonal_summary")
+    st.checkbox("Añadir resumen estacional", key="include_seasonal_summary")
 
 
 def _render_advanced_numeric_controls() -> None:
-    with st.expander("Ajuste numerico avanzado", expanded=False):
-        st.caption("Esta vista sirve como fallback y para ajustes finos.")
+    with st.expander("Ajuste numérico avanzado", expanded=False):
+        st.caption("Úsalo como apoyo o para hacer ajustes finos cuando lo necesites.")
 
         st.subheader("Ventana")
         st.select_slider(
-            "Orientacion de la ventana",
+            "Orientación de la ventana",
             options=[0, 90, 180, 270],
             key="window_orientation_deg",
             format_func=_compass_label,
         )
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Ancho ventana (m)", min_value=0.6, max_value=5.0, step=0.1, key="window_width_m")
+            st.number_input(
+                "Ancho de la ventana (m)",
+                min_value=0.6,
+                max_value=5.0,
+                step=0.1,
+                key="window_width_m",
+            )
         with col2:
-            st.slider("Centro ventana", min_value=0.1, max_value=0.9, step=0.01, key="window_center_ratio")
+            st.slider(
+                "Centro de la ventana",
+                min_value=0.1,
+                max_value=0.9,
+                step=0.01,
+                key="window_center_ratio",
+            )
 
-        st.subheader("Habitacion")
+        st.subheader("Habitación")
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Ancho habitacion (m)", min_value=2.0, max_value=10.0, step=0.1, key="room_width_m")
-            st.number_input("Altura techo (m)", min_value=2.1, max_value=4.0, step=0.1, key="room_ceiling_height_m")
+            st.number_input(
+                "Ancho de la habitación (m)",
+                min_value=2.0,
+                max_value=10.0,
+                step=0.1,
+                key="room_width_m",
+            )
+            st.number_input(
+                "Altura del techo (m)",
+                min_value=2.1,
+                max_value=4.0,
+                step=0.1,
+                key="room_ceiling_height_m",
+            )
         with col2:
-            st.number_input("Fondo habitacion (m)", min_value=2.0, max_value=10.0, step=0.1, key="room_depth_m")
+            st.number_input(
+                "Fondo de la habitación (m)",
+                min_value=2.0,
+                max_value=10.0,
+                step=0.1,
+                key="room_depth_m",
+            )
 
-        st.subheader("Escritorio")
+        st.subheader("Mesa")
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Posicion X mesa (m)", min_value=0.0, step=0.05, key="desk_x_m")
-            st.number_input("Ancho mesa (m)", min_value=0.8, max_value=2.2, step=0.05, key="desk_width_m")
-            st.number_input("Altura mesa (m)", min_value=0.65, max_value=0.9, step=0.01, key="desk_height_m")
+            st.number_input(
+                "Posición X de la mesa (m)", min_value=0.0, step=0.05, key="desk_x_m"
+            )
+            st.number_input(
+                "Ancho de la mesa (m)",
+                min_value=0.8,
+                max_value=2.2,
+                step=0.05,
+                key="desk_width_m",
+            )
+            st.number_input(
+                "Altura de la mesa (m)",
+                min_value=0.65,
+                max_value=0.9,
+                step=0.01,
+                key="desk_height_m",
+            )
         with col2:
-            st.number_input("Posicion Y mesa (m)", min_value=0.0, step=0.05, key="desk_y_m")
-            st.number_input("Fondo mesa (m)", min_value=0.5, max_value=1.1, step=0.05, key="desk_depth_m")
-            st.slider("Orientacion mesa", min_value=0, max_value=359, step=15, key="desk_orientation_deg")
+            st.number_input(
+                "Posición Y de la mesa (m)", min_value=0.0, step=0.05, key="desk_y_m"
+            )
+            st.number_input(
+                "Fondo de la mesa (m)",
+                min_value=0.5,
+                max_value=1.1,
+                step=0.05,
+                key="desk_depth_m",
+            )
+            st.slider(
+                "Orientación de la mesa",
+                min_value=0,
+                max_value=359,
+                step=15,
+                key="desk_orientation_deg",
+            )
 
         st.subheader("Monitor")
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Posicion X monitor (m)", min_value=0.0, step=0.05, key="monitor_x_m")
-            st.number_input("Diagonal monitor (in)", min_value=20.0, max_value=34.0, step=1.0, key="monitor_diagonal_in")
             st.number_input(
-                "Altura centro monitor (m)",
+                "Posición X del monitor (m)",
+                min_value=0.0,
+                step=0.05,
+                key="monitor_x_m",
+            )
+            st.number_input(
+                "Diagonal del monitor (in)",
+                min_value=20.0,
+                max_value=34.0,
+                step=1.0,
+                key="monitor_diagonal_in",
+            )
+            st.number_input(
+                "Altura del centro del monitor (m)",
                 min_value=0.8,
                 max_value=1.6,
                 step=0.01,
                 key="monitor_center_height_m",
             )
         with col2:
-            st.number_input("Posicion Y monitor (m)", min_value=0.0, step=0.05, key="monitor_y_m")
-            st.slider("Orientacion monitor", min_value=0, max_value=359, step=15, key="monitor_orientation_deg")
-            st.slider("Inclinacion monitor", min_value=-20, max_value=20, step=1, key="monitor_tilt_deg")
+            st.number_input(
+                "Posición Y del monitor (m)",
+                min_value=0.0,
+                step=0.05,
+                key="monitor_y_m",
+            )
+            st.slider(
+                "Orientación del monitor",
+                min_value=0,
+                max_value=359,
+                step=15,
+                key="monitor_orientation_deg",
+            )
+            st.slider(
+                "Inclinación del monitor",
+                min_value=-20,
+                max_value=20,
+                step=1,
+                key="monitor_tilt_deg",
+            )
 
-        st.subheader("Ergonomia")
+        st.subheader("Ergonomía")
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Altura de ojos (m)", min_value=1.0, max_value=1.5, step=0.01, key="eye_height_m")
+            st.number_input(
+                "Altura de los ojos (m)",
+                min_value=1.0,
+                max_value=1.5,
+                step=0.01,
+                key="eye_height_m",
+            )
         with col2:
             st.number_input(
                 "Distancia ojos-monitor (m)",
@@ -304,13 +401,17 @@ def render_sidebar() -> SidebarSubmission:
     apply_pending_session_patch()
     with st.sidebar:
         st.header("Contexto del escenario")
-        st.caption("La distribucion principal se edita en el plano 2D del panel central.")
+        st.caption(
+            "La distribución principal se edita en el plano 2D del panel central."
+        )
 
         preset_applied = _render_presets()
         _render_location_and_weather()
         _render_advanced_numeric_controls()
 
-        run_requested = st.button("Analizar configuracion", type="primary", width="stretch")
+        run_requested = st.button(
+            "Analizar configuración", type="primary", width="stretch"
+        )
         auto_run = "current_result" not in st.session_state
         should_build_request = run_requested or auto_run or preset_applied
         if not should_build_request:

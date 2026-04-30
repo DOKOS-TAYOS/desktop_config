@@ -27,11 +27,13 @@ def _float_or_default(value, default: float) -> float:
         return default
 
 
-def build_theoretical_weather_context(timezone: str, reason: str | None = None) -> WeatherContext:
+def build_theoretical_weather_context(
+    timezone: str, reason: str | None = None
+) -> WeatherContext:
     return WeatherContext(
         mode="theoretical_clear_sky",
         timezone=timezone,
-        reason=reason or "Usando cielo despejado teorico.",
+        reason=reason or "Usando cielo despejado teórico.",
     )
 
 
@@ -97,15 +99,29 @@ def get_weather_context(
         response.raise_for_status()
     except requests.RequestException as exc:
         reason = f"Open-Meteo no disponible: {exc}."
-        log_event(logger, logging.WARNING, "weather_fallback", reason=reason, timezone=timezone)
+        log_event(
+            logger,
+            logging.WARNING,
+            "weather_fallback",
+            reason=reason,
+            timezone=timezone,
+        )
         return build_theoretical_weather_context(timezone, reason=reason)
 
     hourly = response.json().get("hourly") or {}
     times = hourly.get("time") or []
     if not times:
-        reason = "Open-Meteo no devolvio datos horarios."
-        log_event(logger, logging.WARNING, "weather_fallback", reason=reason, timezone=timezone)
-        return build_theoretical_weather_context(timezone, reason="Open-Meteo no devolvio datos horarios.")
+        reason = "Open-Meteo no devolvió datos horarios."
+        log_event(
+            logger,
+            logging.WARNING,
+            "weather_fallback",
+            reason=reason,
+            timezone=timezone,
+        )
+        return build_theoretical_weather_context(
+            timezone, reason="Open-Meteo no devolvió datos horarios."
+        )
 
     samples: dict[datetime, WeatherSample] = {}
     cloud_cover = hourly.get("cloud_cover") or []
@@ -120,17 +136,21 @@ def get_weather_context(
                 0.0,
             ),
             temperature_c=_float_or_default(
-                temperatures[index] if index < len(temperatures) else FORECAST_TEMPERATURE_C,
+                temperatures[index]
+                if index < len(temperatures)
+                else FORECAST_TEMPERATURE_C,
                 FORECAST_TEMPERATURE_C,
             ),
             direct_radiation_wm2=_float_or_default(
-                radiations[index] if index < len(radiations) else THEORETICAL_DIRECT_RADIATION_WM2,
+                radiations[index]
+                if index < len(radiations)
+                else THEORETICAL_DIRECT_RADIATION_WM2,
                 THEORETICAL_DIRECT_RADIATION_WM2,
             ),
         )
 
     if not any(sample_time.date() == analysis_date for sample_time in samples):
-        reason = "La fecha queda fuera del pronostico disponible."
+        reason = "La fecha queda fuera del pronóstico disponible."
         log_event(
             logger,
             logging.WARNING,
@@ -141,7 +161,7 @@ def get_weather_context(
         )
         return build_theoretical_weather_context(
             timezone,
-            reason="La fecha queda fuera del pronostico disponible.",
+            reason="La fecha queda fuera del pronóstico disponible.",
         )
 
     log_event(
@@ -155,7 +175,9 @@ def get_weather_context(
     return WeatherContext(mode="forecast", timezone=timezone, hourly_samples=samples)
 
 
-def weather_sample_for_time(context: WeatherContext, when_local: datetime) -> WeatherSample:
+def weather_sample_for_time(
+    context: WeatherContext, when_local: datetime
+) -> WeatherSample:
     if context.mode != "forecast" or not context.hourly_samples:
         return WeatherSample(
             cloud_cover_pct=0.0,
