@@ -182,6 +182,10 @@ def _build_candidate_request(
     )
 
 
+def _evaluation_time_step_minutes(request: AnalysisRequest) -> int:
+    return max(request.time_step_minutes, 30)
+
+
 def _evaluate_candidate(
     candidate_request: AnalysisRequest,
     baseline: ScenarioResult,
@@ -192,7 +196,11 @@ def _evaluate_candidate(
         return None
 
     candidate_result = analyze_scenario(
-        replace(candidate_request, include_seasonal_summary=False),
+        replace(
+            candidate_request,
+            include_seasonal_summary=False,
+            time_step_minutes=_evaluation_time_step_minutes(candidate_request),
+        ),
         weather_context=baseline.weather_context,
     )
     return VariantCandidate(
@@ -291,7 +299,17 @@ def recommend_variant(
         location_label=request.location.label,
     )
     best_candidate = _search_best_candidate(request, baseline)
-    best_result = best_candidate.result if best_candidate is not None else baseline
+    if best_candidate is None or best_candidate.request == baseline.request:
+        best_result = baseline
+    else:
+        best_result = analyze_scenario(
+            replace(
+                best_candidate.request,
+                include_seasonal_summary=request.include_seasonal_summary,
+                time_step_minutes=request.time_step_minutes,
+            ),
+            weather_context=baseline.weather_context,
+        )
 
     if (
         best_candidate is not None

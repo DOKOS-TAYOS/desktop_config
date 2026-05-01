@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 from typing import Any, cast
 from uuid import uuid4
@@ -7,18 +8,11 @@ from uuid import uuid4
 import streamlit as st
 
 from app.domain.models import AnalysisRequest, ScenarioResult, TimeWindowSummary
-from app.services.analysis import analyze_scenario
-from app.services.recommendations import recommend_variant
-from app.ui.charts import (
-    room_plan_chart,
-    score_comparison_chart,
-    seasonal_heatmap,
-    timeline_chart,
-)
 from app.ui.editor_component import render_floor_plan_editor
 from app.ui.editor_state import (
     EditorDelta,
     SceneElementKind,
+    SceneState,
     apply_editor_delta,
     build_scene_state,
     scene_state_from_payload,
@@ -36,6 +30,57 @@ from app.utils.logging_utils import bind_context, get_logger, setup_logging
 
 
 logger = get_logger(__name__)
+
+
+def analyze_scenario(
+    request: AnalysisRequest,
+    *,
+    include_live_weather: bool = False,
+) -> ScenarioResult:
+    from app.services.analysis import analyze_scenario as _analyze_scenario
+
+    return _analyze_scenario(request, include_live_weather=include_live_weather)
+
+
+def recommend_variant(
+    request: AnalysisRequest,
+    baseline: ScenarioResult | None = None,
+) -> ScenarioResult:
+    from app.services.recommendations import recommend_variant as _recommend_variant
+
+    return _recommend_variant(request, baseline)
+
+
+def timeline_chart(result: ScenarioResult, language: LanguageCode = "es") -> Any:
+    from app.ui.charts import timeline_chart as _timeline_chart
+
+    return _timeline_chart(result, language)
+
+
+def score_comparison_chart(
+    current: ScenarioResult,
+    recommended: ScenarioResult,
+    language: LanguageCode = "es",
+) -> Any:
+    from app.ui.charts import score_comparison_chart as _score_comparison_chart
+
+    return _score_comparison_chart(current, recommended, language)
+
+
+def room_plan_chart(
+    current: ScenarioResult,
+    recommended: ScenarioResult | None = None,
+    language: LanguageCode = "es",
+) -> Any:
+    from app.ui.charts import room_plan_chart as _room_plan_chart
+
+    return _room_plan_chart(current, recommended, language)
+
+
+def seasonal_heatmap(result: ScenarioResult, language: LanguageCode = "es") -> Any:
+    from app.ui.charts import seasonal_heatmap as _seasonal_heatmap
+
+    return _seasonal_heatmap(result, language)
 
 
 def _session_logger() -> Any:
@@ -56,6 +101,50 @@ def _static_plotly_config() -> dict[str, bool]:
 
 def _current_language() -> LanguageCode:
     return cast(LanguageCode, st.session_state.setdefault("language", "es"))
+
+
+def _request_cache_key(request: AnalysisRequest, use_live_weather: bool) -> str:
+    return f"{use_live_weather}:{request!r}"
+
+
+def _cached_results_for_request(
+    request: AnalysisRequest,
+    use_live_weather: bool,
+) -> tuple[ScenarioResult, ScenarioResult]:
+    cache = cast(
+        dict[str, tuple[ScenarioResult, ScenarioResult]],
+        st.session_state.setdefault("_analysis_cache", {}),
+    )
+    cache_key = _request_cache_key(request, use_live_weather)
+    if cache_key not in cache:
+        current = analyze_scenario(
+            request,
+            include_live_weather=use_live_weather,
+        )
+        recommended = recommend_variant(request, current)
+        cache[cache_key] = (deepcopy(current), deepcopy(recommended))
+    cached_current, cached_recommended = cache[cache_key]
+    return deepcopy(cached_current), deepcopy(cached_recommended)
+
+
+def _has_pending_analysis(
+    request: AnalysisRequest,
+    *,
+    use_live_weather: bool,
+) -> bool:
+    last_key = cast(str | None, st.session_state.get("last_analyzed_request_key"))
+    if last_key is None:
+        return False
+    return last_key != _request_cache_key(request, use_live_weather)
+
+
+def _remember_draft_request(request: AnalysisRequest) -> None:
+    st.session_state["draft_request"] = deepcopy(request)
+
+
+def _draft_request_from_state() -> AnalysisRequest | None:
+    draft_request = cast(AnalysisRequest | None, st.session_state.get("draft_request"))
+    return deepcopy(draft_request) if draft_request is not None else None
 
 
 def _render_language_switch() -> LanguageCode:
@@ -302,14 +391,14 @@ def _store_results(request: AnalysisRequest, use_live_weather: bool) -> None:
         else "Calculating solar position, risks, and the recommended layout..."
     )
     with st.spinner(spinner_text):
-        current = analyze_scenario(
-            request,
-            include_live_weather=use_live_weather,
-        )
-        recommended = recommend_variant(request, current)
+        current, recommended = _cached_results_for_request(request, use_live_weather)
     st.session_state["current_result"] = current
     st.session_state["recommended_result"] = recommended
     st.session_state["location_label"] = request.location.label
+    st.session_state["last_analyzed_request_key"] = _request_cache_key(
+        request, use_live_weather
+    )
+    _remember_draft_request(request)
     request_logger.info(
         "analysis_results_stored",
         comfort_score=current.comfort_score,
@@ -319,12 +408,18 @@ def _store_results(request: AnalysisRequest, use_live_weather: bool) -> None:
 
 def _load_request(submission: Any, language: LanguageCode) -> AnalysisRequest:
     if submission.request is not None:
+        _remember_draft_request(submission.request)
         return submission.request
     try:
-        return build_request_from_session(language)
+        request = build_request_from_session(language)
+        _remember_draft_request(request)
+        return request
     except Exception:
-        current = st.session_state.get("current_result")
-        if current:
+        draft_request = _draft_request_from_state()
+        if draft_request is not None:
+            return draft_request
+        current = cast(ScenarioResult | None, st.session_state.get("current_result"))
+        if current is not None:
             return current.request
         raise
 
@@ -336,14 +431,23 @@ def _scene_from_request(request: AnalysisRequest):
     return scene
 
 
+def _recommended_scene_for_editor() -> SceneState | None:
+    recommended_result = cast(
+        ScenarioResult | None, st.session_state.get("recommended_result")
+    )
+    if recommended_result is None:
+        return None
+    return build_scene_state(recommended_result.request)
+
+
 def _apply_scene_commit(
     scene, base_request: AnalysisRequest, use_live_weather: bool
 ) -> AnalysisRequest:
     updated_request = scene_to_request(scene, base_request)
+    _remember_draft_request(updated_request)
     queue_request_sync(updated_request)
     st.session_state["editor_selected_element"] = scene.selected_element
     st.session_state["editor_commit_version"] = scene.commit_version
-    _store_results(updated_request, use_live_weather)
     st.rerun()
     return updated_request
 
@@ -364,6 +468,7 @@ def _handle_editor_event(
             key="floor_plan_editor",
             height=520,
             language=language,
+            recommended_scene=_recommended_scene_for_editor(),
         )
     except Exception as exc:
         fallback_mode = True
@@ -423,7 +528,15 @@ def _apply_quick_adjustment(
 def _apply_request_update(
     request: AnalysisRequest, use_live_weather: bool
 ) -> AnalysisRequest:
+    _remember_draft_request(request)
     queue_request_sync(request)
+    st.rerun()
+    return request
+
+
+def _trigger_manual_analysis(
+    request: AnalysisRequest, use_live_weather: bool
+) -> AnalysisRequest:
     _store_results(request, use_live_weather)
     st.rerun()
     return request
@@ -592,6 +705,13 @@ def _render_inspector(
             )
             return _apply_request_update(centered_request, use_live_weather)
 
+    if st.button(
+        translate("sidebar.run_analysis", language),
+        key="inspector_run_analysis",
+        width="stretch",
+    ):
+        return _trigger_manual_analysis(base_request, use_live_weather)
+
     return base_request
 
 
@@ -673,6 +793,17 @@ def _render_summary(
             weather_mode=weather_text,
         )
     )
+
+
+def _render_pending_notice(
+    request: AnalysisRequest,
+    *,
+    use_live_weather: bool,
+    language: LanguageCode,
+) -> None:
+    if not _has_pending_analysis(request, use_live_weather=use_live_weather):
+        return
+    st.warning(translate("summary.pending_changes", language))
 
 
 def _render_diagnosis_panel(
@@ -857,6 +988,10 @@ def main() -> None:
 
     current_result = st.session_state.get("current_result")
     recommended_result = st.session_state.get("recommended_result")
+
+    _render_pending_notice(
+        request, use_live_weather=use_live_weather, language=language
+    )
 
     if current_result and recommended_result:
         st.divider()

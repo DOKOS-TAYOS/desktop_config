@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.domain.models import AnalysisRequest
 from app.utils.geometry import (
+    EPSILON,
     desk_rectangle,
     normalize_angle_deg,
     point_in_rotated_rectangle,
@@ -29,6 +30,10 @@ def _fail(message: str, **fields: object) -> NoReturn:
 def _ensure_positive(name: str, value: float) -> None:
     if value <= 0:
         _fail(f"{name} must be positive.", field=name, value=value)
+
+
+def _within_bounds(value: float, upper: float) -> bool:
+    return -EPSILON <= value <= upper + EPSILON
 
 
 def validate_request(request: AnalysisRequest) -> None:
@@ -113,13 +118,22 @@ def validate_request(request: AnalysisRequest) -> None:
         )
 
     desk_rect = desk_rectangle(desk)
-    if not (0 <= desk.x_m <= room.width_m and 0 <= desk.y_m <= room.depth_m):
+    if not (
+        _within_bounds(desk.x_m, room.width_m)
+        and _within_bounds(desk.y_m, room.depth_m)
+    ):
         _fail("desk must remain inside the room bounds.", field="desk.position")
     for corner_x, corner_y in rectangle_corners(desk_rect):
-        if not (0 <= corner_x <= room.width_m and 0 <= corner_y <= room.depth_m):
+        if not (
+            _within_bounds(corner_x, room.width_m)
+            and _within_bounds(corner_y, room.depth_m)
+        ):
             _fail("desk must remain inside the room bounds.", field="desk.corners")
 
-    if not (0 <= monitor.x_m <= room.width_m and 0 <= monitor.y_m <= room.depth_m):
+    if not (
+        _within_bounds(monitor.x_m, room.width_m)
+        and _within_bounds(monitor.y_m, room.depth_m)
+    ):
         _fail("monitor must remain inside the room bounds.", field="monitor.position")
     if not point_in_rotated_rectangle((monitor.x_m, monitor.y_m), desk_rect):
         _fail(

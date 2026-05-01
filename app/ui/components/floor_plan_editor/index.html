@@ -19,6 +19,8 @@
         --monitor: #7bd6bf;
         --monitor-fill: rgba(123, 214, 191, 0.18);
         --handle: #f1bc62;
+        --guide: #cbe9df;
+        --guide-fill: rgba(203, 233, 223, 0.12);
         --selection: #f6dd9f;
         --shadow: rgba(0, 0, 0, 0.28);
       }
@@ -137,6 +139,7 @@
             <span><i class="dot" style="background:#ff8e72"></i><span id="legend-desk">Mesa</span></span>
             <span><i class="dot" style="background:#7bd6bf"></i><span id="legend-monitor">Monitor</span></span>
             <span><i class="dot" style="background:#f1bc62"></i><span id="legend-handles">Asas de giro y tamaño</span></span>
+            <span><i class="dot" style="background:#cbe9df"></i><span id="legend-guide">Guía recomendada</span></span>
           </div>
         </div>
         <div class="scene-wrap">
@@ -153,6 +156,7 @@
       const hint = document.getElementById("hint");
       const state = {
         scene: null,
+        recommendedScene: null,
         args: null,
         eventSeq: 0,
         drag: null,
@@ -173,9 +177,12 @@
           legendDesk: "Mesa",
           legendMonitor: "Monitor",
           legendHandles: "Asas de giro y tamaño",
-          hint: "El análisis solo se recalcula al terminar el gesto.",
-          hintDragging: "Al soltar el ratón se recalcula la simulación.",
-          hintCommit: "Análisis actualizado tras confirmar el gesto.",
+          legendGuide: "Guía recomendada",
+          hint: "Los cambios del plano quedan listos para el siguiente análisis manual.",
+          hintDragging: "Al soltar el ratón se guardará el ajuste en el plano.",
+          hintCommit: "Cambio aplicado. Pulsa Actualizar análisis para recalcular.",
+          scale: "Escala",
+          recommended: "Recomendado",
           room: "Habitación",
           desk: "Mesa",
           monitor: "Monitor",
@@ -188,9 +195,12 @@
           legendDesk: "Desk",
           legendMonitor: "Monitor",
           legendHandles: "Rotation and resize handles",
-          hint: "The analysis is only recalculated after the gesture ends.",
-          hintDragging: "The simulation is recalculated when you release the mouse.",
-          hintCommit: "Analysis updated after confirming the gesture.",
+          legendGuide: "Recommended guide",
+          hint: "Floor-plan changes are ready for the next manual analysis.",
+          hintDragging: "Releasing the mouse stores the adjustment on the floor plan.",
+          hintCommit: "Change applied. Press Update analysis to recalculate.",
+          scale: "Scale",
+          recommended: "Recommended",
           room: "Room",
           desk: "Desk",
           monitor: "Monitor",
@@ -354,6 +364,26 @@
         return state.scene.selected_element === kind ? "#f6dd9f" : "transparent";
       }
 
+      function signedRotationDelta(targetAngle, originAngle) {
+        let delta = normalizeAngle(targetAngle - originAngle);
+        if (delta > 180) {
+          delta -= 360;
+        }
+        return delta;
+      }
+
+      function approxEqual(a, b, tolerance = 0.01) {
+        return Math.abs(a - b) <= tolerance;
+      }
+
+      function movementLabel(deltaMeters) {
+        return `${Math.round(Math.abs(deltaMeters) * 100)} cm`;
+      }
+
+      function scaleLabel(meters) {
+        return `${Number.isInteger(meters) ? meters.toFixed(0) : meters.toFixed(1)} m`;
+      }
+
       function syncRoomElement(scene) {
         if (!scene.elements.room) {
           scene.elements.room = {
@@ -420,6 +450,7 @@
         document.getElementById("legend-desk").textContent = t("legendDesk");
         document.getElementById("legend-monitor").textContent = t("legendMonitor");
         document.getElementById("legend-handles").textContent = t("legendHandles");
+        document.getElementById("legend-guide").textContent = t("legendGuide");
         if (!state.drag) {
           setHint(t("hint"));
         }
@@ -461,9 +492,11 @@
         svg.appendChild(grid);
 
         drawRoom();
+        drawRecommendationOverlay();
         drawWindow();
         drawDesk();
         drawMonitor();
+        drawScaleBar();
       }
 
       function drawRoom() {
@@ -714,6 +747,249 @@
         });
         label.textContent = t("monitor");
         svg.appendChild(label);
+      }
+
+      function drawRecommendationOverlay() {
+        if (!state.recommendedScene) {
+          return;
+        }
+        const currentDesk = state.scene.elements.desk;
+        const currentMonitor = state.scene.elements.monitor;
+        const recommendedDesk = state.recommendedScene.elements.desk;
+        const recommendedMonitor = state.recommendedScene.elements.monitor;
+        const hasDeskMove =
+          !approxEqual(currentDesk.x_m, recommendedDesk.x_m, 0.03) ||
+          !approxEqual(currentDesk.y_m, recommendedDesk.y_m, 0.03);
+        const hasDeskRotation =
+          Math.abs(
+            signedRotationDelta(
+              recommendedDesk.orientation_deg,
+              currentDesk.orientation_deg
+            )
+          ) >= 1;
+        const hasMonitorRotation =
+          Math.abs(
+            signedRotationDelta(
+              recommendedMonitor.orientation_deg,
+              currentMonitor.orientation_deg
+            )
+          ) >= 1;
+
+        if (!hasDeskMove && !hasDeskRotation && !hasMonitorRotation) {
+          return;
+        }
+
+        const deskCorners = rectangleCorners(recommendedDesk).map(worldToScreen);
+        svg.appendChild(
+          createSvg("path", {
+            d: `${linePath([...deskCorners, deskCorners[0]])} Z`,
+            fill: "var(--guide-fill)",
+            stroke: "var(--guide)",
+            "stroke-width": "2",
+            "stroke-linejoin": "round",
+            "stroke-dasharray": "8 5",
+          })
+        );
+
+        const recommendedDeskCenter = worldToScreen({
+          x: recommendedDesk.x_m,
+          y: recommendedDesk.y_m,
+        });
+        svg.appendChild(
+          createSvg("circle", {
+            cx: recommendedDeskCenter.x,
+            cy: recommendedDeskCenter.y,
+            r: "5",
+            fill: "#11181f",
+            stroke: "var(--guide)",
+            "stroke-width": "3",
+          })
+        );
+
+        const monitorCorners = rectangleCorners(recommendedMonitor).map(worldToScreen);
+        svg.appendChild(
+          createSvg("path", {
+            d: `${linePath([...monitorCorners, monitorCorners[0]])} Z`,
+            fill: "rgba(203, 233, 223, 0.08)",
+            stroke: "var(--guide)",
+            "stroke-width": "2",
+            "stroke-linejoin": "round",
+            "stroke-dasharray": "6 4",
+          })
+        );
+
+        const label = createSvg("text", {
+          x: recommendedDeskCenter.x + 12,
+          y: recommendedDeskCenter.y - 14,
+          class: "label",
+          fill: "var(--guide)",
+        });
+        label.textContent = t("recommended");
+        svg.appendChild(label);
+
+        drawRecommendationMovementGuides(currentDesk, recommendedDesk);
+        drawRecommendationRotationBadge(currentDesk, recommendedDeskCenter);
+      }
+
+      function drawRecommendationMovementGuides(currentDesk, recommendedDesk) {
+        const deltaX = recommendedDesk.x_m - currentDesk.x_m;
+        const deltaY = recommendedDesk.y_m - currentDesk.y_m;
+        if (Math.abs(deltaX) < 0.05 && Math.abs(deltaY) < 0.05) {
+          return;
+        }
+
+        const start = { x: currentDesk.x_m, y: currentDesk.y_m };
+        const corner = { x: recommendedDesk.x_m, y: currentDesk.y_m };
+        const end = { x: recommendedDesk.x_m, y: recommendedDesk.y_m };
+
+        if (Math.abs(deltaX) >= 0.05) {
+          drawGuideSegment(start, corner, movementLabel(deltaX), -12);
+        }
+        if (Math.abs(deltaY) >= 0.05) {
+          drawGuideSegment(corner, end, movementLabel(deltaY), 16);
+        }
+      }
+
+      function drawGuideSegment(fromWorld, toWorld, labelText, labelOffsetY) {
+        const from = worldToScreen(fromWorld);
+        const to = worldToScreen(toWorld);
+        svg.appendChild(
+          createSvg("line", {
+            x1: from.x,
+            y1: from.y,
+            x2: to.x,
+            y2: to.y,
+            stroke: "var(--guide)",
+            "stroke-width": "2.5",
+            "stroke-dasharray": "6 5",
+          })
+        );
+        const arrowSize = 7;
+        if (!approxEqual(from.x, to.x, 0.5) || !approxEqual(from.y, to.y, 0.5)) {
+          const angle = Math.atan2(to.y - from.y, to.x - from.x);
+          const arrowPointA = {
+            x: to.x - arrowSize * Math.cos(angle - Math.PI / 6),
+            y: to.y - arrowSize * Math.sin(angle - Math.PI / 6),
+          };
+          const arrowPointB = {
+            x: to.x - arrowSize * Math.cos(angle + Math.PI / 6),
+            y: to.y - arrowSize * Math.sin(angle + Math.PI / 6),
+          };
+          svg.appendChild(
+            createSvg("path", {
+              d: `M ${to.x.toFixed(2)} ${to.y.toFixed(2)} L ${arrowPointA.x.toFixed(2)} ${arrowPointA.y.toFixed(2)} L ${arrowPointB.x.toFixed(2)} ${arrowPointB.y.toFixed(2)} Z`,
+              fill: "var(--guide)",
+              stroke: "none",
+            })
+          );
+        }
+
+        const midX = (from.x + to.x) / 2;
+        const midY = (from.y + to.y) / 2;
+        const label = createSvg("text", {
+          x: midX,
+          y: midY + labelOffsetY,
+          class: "label",
+          "text-anchor": "middle",
+          fill: "var(--guide)",
+        });
+        label.textContent = labelText;
+        svg.appendChild(label);
+      }
+
+      function drawRecommendationRotationBadge(currentDesk, recommendedDeskCenter) {
+        const rotationDelta = signedRotationDelta(
+          state.recommendedScene.elements.desk.orientation_deg,
+          currentDesk.orientation_deg
+        );
+        if (Math.abs(rotationDelta) < 1) {
+          return;
+        }
+        const label = createSvg("text", {
+          x: recommendedDeskCenter.x,
+          y: recommendedDeskCenter.y + 20,
+          class: "label",
+          "text-anchor": "middle",
+          fill: "var(--guide)",
+        });
+        label.textContent = `${rotationDelta > 0 ? "+" : ""}${Math.round(rotationDelta)}°`;
+        svg.appendChild(label);
+      }
+
+      function drawScaleBar() {
+        const candidates = [2, 1, 0.5, 0.25];
+        let selectedMeters = 1;
+        for (const candidate of candidates) {
+          const pixels = candidate * state.view.scale;
+          if (pixels >= 90 && pixels <= 180) {
+            selectedMeters = candidate;
+            break;
+          }
+        }
+
+        const startX = state.view.padding + 12;
+        const startY = state.view.height - state.view.padding + 8;
+        const endX = startX + selectedMeters * state.view.scale;
+        const tickHeight = 10;
+
+        svg.appendChild(
+          createSvg("line", {
+            x1: startX,
+            y1: startY,
+            x2: endX,
+            y2: startY,
+            stroke: "var(--room)",
+            "stroke-width": "3",
+          })
+        );
+        svg.appendChild(
+          createSvg("line", {
+            x1: startX,
+            y1: startY - tickHeight / 2,
+            x2: startX,
+            y2: startY + tickHeight / 2,
+            stroke: "var(--room)",
+            "stroke-width": "3",
+          })
+        );
+        svg.appendChild(
+          createSvg("line", {
+            x1: endX,
+            y1: startY - tickHeight / 2,
+            x2: endX,
+            y2: startY + tickHeight / 2,
+            stroke: "var(--room)",
+            "stroke-width": "3",
+          })
+        );
+
+        const title = createSvg("text", {
+          x: startX,
+          y: startY - 14,
+          class: "label",
+          fill: "var(--muted)",
+        });
+        title.textContent = `${t("scale")} ${scaleLabel(selectedMeters)}`;
+        svg.appendChild(title);
+
+        const zeroLabel = createSvg("text", {
+          x: startX,
+          y: startY + 20,
+          class: "label",
+          fill: "var(--muted)",
+        });
+        zeroLabel.textContent = "0";
+        svg.appendChild(zeroLabel);
+
+        const lengthLabel = createSvg("text", {
+          x: endX,
+          y: startY + 20,
+          class: "label",
+          "text-anchor": "end",
+          fill: "var(--muted)",
+        });
+        lengthLabel.textContent = scaleLabel(selectedMeters);
+        svg.appendChild(lengthLabel);
       }
 
       function clampDeskCenter(scene, desk, center) {
@@ -1065,6 +1341,7 @@
 
       function renderFromPython(data) {
         const incomingScene = clone((data.args || {}).scene || null);
+        const incomingRecommendedScene = clone((data.args || {}).recommended_scene || null);
         if (!incomingScene) {
           return;
         }
@@ -1072,6 +1349,11 @@
         applyChromeTranslations();
         syncRoomElement(incomingScene);
         syncWindowToRoom(incomingScene);
+        if (incomingRecommendedScene) {
+          syncRoomElement(incomingRecommendedScene);
+          syncWindowToRoom(incomingRecommendedScene);
+        }
+        state.recommendedScene = incomingRecommendedScene;
         if (!state.drag) {
           state.scene = incomingScene;
         }

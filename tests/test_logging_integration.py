@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 from types import SimpleNamespace
-
-import requests
+from urllib.error import URLError
 
 from app.services.analysis import analyze_scenario
 from app.services.recommendations import recommend_variant
@@ -16,9 +15,9 @@ def test_weather_fallback_logs_warning(monkeypatch, caplog):
     weather.get_weather_context.cache_clear()
 
     def fail_request(*args, **kwargs):
-        raise requests.RequestException("network down")
+        raise URLError("network down")
 
-    monkeypatch.setattr(weather.requests, "get", fail_request)
+    monkeypatch.setattr(weather, "urlopen", fail_request)
     caplog.set_level(logging.WARNING, logger="app.services.weather")
 
     context = weather.get_weather_context(

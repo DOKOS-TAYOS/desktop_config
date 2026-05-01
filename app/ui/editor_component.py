@@ -22,15 +22,26 @@ def render_floor_plan_editor(
     key: str = "floor_plan_editor",
     height: int = 520,
     language: LanguageCode = "es",
+    recommended_scene: SceneState | None = None,
 ) -> dict[str, Any] | None:
     default_value = {
         "scene": scene_state_to_payload(scene),
+        "recommended_scene": (
+            scene_state_to_payload(recommended_scene)
+            if recommended_scene is not None
+            else None
+        ),
         "language": language,
         "event_seq": 0,
         "status": "idle",
     }
     return _EDITOR_COMPONENT(
         scene=scene_state_to_payload(scene),
+        recommended_scene=(
+            scene_state_to_payload(recommended_scene)
+            if recommended_scene is not None
+            else None
+        ),
         language=language,
         default=default_value,
         height=height,

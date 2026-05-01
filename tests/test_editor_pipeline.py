@@ -79,6 +79,8 @@ def test_editor_component_receives_active_language(base_request, monkeypatch):
     monkeypatch.setattr("app.ui.editor_component._EDITOR_COMPONENT", fake_component)
 
     scene = build_scene_state(base_request)
-    render_floor_plan_editor(scene, language="en")
+    recommended_scene = build_scene_state(base_request)
+    render_floor_plan_editor(scene, language="en", recommended_scene=recommended_scene)
 
     assert captured["language"] == "en"
+    assert captured["recommended_scene"] is not None

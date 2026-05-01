@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime
 from functools import lru_cache
-
-import requests
+from typing import Any
+from urllib.error import URLError
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 from app.domain.models import LocationInput, WeatherContext, WeatherSample
 from app.utils.config import (
@@ -37,20 +40,24 @@ def build_theoretical_weather_context(
     )
 
 
+def _fetch_json(url: str, params: dict[str, str | int | float]) -> dict[str, Any]:
+    query_string = urlencode(params)
+    request_url = f"{url}?{query_string}"
+    with urlopen(request_url, timeout=WEATHER_TIMEOUT_SECONDS) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 @lru_cache(maxsize=64)
 def geocode_city(query: str) -> LocationInput | None:
     try:
-        response = requests.get(
+        payload = _fetch_json(
             "https://geocoding-api.open-meteo.com/v1/search",
-            params={"name": query, "count": 1, "language": "es", "format": "json"},
-            timeout=WEATHER_TIMEOUT_SECONDS,
+            {"name": query, "count": 1, "language": "es", "format": "json"},
         )
-        response.raise_for_status()
-    except requests.RequestException:
+    except URLError:
         log_event(logger, logging.WARNING, "geocode_failed", city_query=query)
         raise
 
-    payload = response.json()
     results = payload.get("results") or []
     if not results:
         log_event(logger, logging.WARNING, "geocode_no_results", city_query=query)
@@ -85,19 +92,17 @@ def get_weather_context(
     analysis_date: date,
 ) -> WeatherContext:
     try:
-        response = requests.get(
+        payload = _fetch_json(
             "https://api.open-meteo.com/v1/forecast",
-            params={
+            {
                 "latitude": latitude,
                 "longitude": longitude,
                 "hourly": "temperature_2m,cloud_cover,direct_radiation",
                 "timezone": timezone,
                 "forecast_days": 16,
             },
-            timeout=WEATHER_TIMEOUT_SECONDS,
         )
-        response.raise_for_status()
-    except requests.RequestException as exc:
+    except URLError as exc:
         reason = f"Open-Meteo no disponible: {exc}."
         log_event(
             logger,
@@ -108,7 +113,7 @@ def get_weather_context(
         )
         return build_theoretical_weather_context(timezone, reason=reason)
 
-    hourly = response.json().get("hourly") or {}
+    hourly = payload.get("hourly") or {}
     times = hourly.get("time") or []
     if not times:
         reason = "Open-Meteo no devolvió datos horarios."

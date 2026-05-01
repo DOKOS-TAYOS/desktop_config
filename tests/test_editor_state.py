@@ -138,3 +138,17 @@ def test_desk_resize_keeps_monitor_inside_desk(base_request):
     validate_request(updated_request)
     assert updated_request.desk.width_m < base_request.desk.width_m
     assert updated_request.desk.depth_m < base_request.desk.depth_m
+
+
+def test_scene_to_request_reclamps_rotated_desk_from_editor_payload(base_request):
+    scene = build_scene_state(base_request)
+    scene.elements["desk"].orientation_deg = 330.0
+    scene.elements["desk"].x_m = 0.25
+    scene.elements["desk"].y_m = 1.9
+    scene.elements["monitor"].x_m = 0.1
+    scene.elements["monitor"].y_m = 1.9
+
+    updated_request = scene_to_request(scene, base_request)
+
+    validate_request(updated_request)
+    assert updated_request.desk.x_m > scene.elements["desk"].x_m

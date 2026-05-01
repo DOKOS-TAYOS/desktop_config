@@ -422,6 +422,43 @@ def _rotate_monitor(scene: SceneState, delta: EditorDelta) -> SceneElement:
     )
 
 
+def _stabilize_scene_geometry(scene: SceneState) -> SceneState:
+    elements = cast(
+        dict[SceneElementKind, SceneElement],
+        {key: replace(value) for key, value in scene.elements.items()},
+    )
+    elements["room"] = replace(
+        elements["room"],
+        x_m=scene.room_width_m / 2,
+        y_m=scene.room_depth_m / 2,
+        width_m=scene.room_width_m,
+        depth_m=scene.room_depth_m,
+        orientation_deg=0.0,
+    )
+    elements["window"] = _sync_window_to_room(
+        scene.room_width_m,
+        scene.room_depth_m,
+        elements["window"],
+    )
+    desk = elements["desk"]
+    clamped_desk_center = _clamp_desk_center(
+        scene.room_width_m,
+        scene.room_depth_m,
+        desk,
+        (desk.x_m, desk.y_m),
+    )
+    elements["desk"] = replace(
+        desk,
+        x_m=clamped_desk_center[0],
+        y_m=clamped_desk_center[1],
+    )
+    elements["monitor"] = _move_monitor_within_desk(
+        elements["monitor"],
+        elements["desk"],
+    )
+    return replace(scene, elements=elements)
+
+
 def apply_editor_delta(scene: SceneState, delta: EditorDelta) -> SceneState:
     elements = cast(
         dict[SceneElementKind, SceneElement],
@@ -472,13 +509,14 @@ def apply_editor_delta(scene: SceneState, delta: EditorDelta) -> SceneState:
 def scene_to_request(
     scene: SceneState, base_request: AnalysisRequest
 ) -> AnalysisRequest:
-    window = scene.elements["window"]
-    desk = scene.elements["desk"]
-    monitor = scene.elements["monitor"]
+    stabilized_scene = _stabilize_scene_geometry(scene)
+    window = stabilized_scene.elements["window"]
+    desk = stabilized_scene.elements["desk"]
+    monitor = stabilized_scene.elements["monitor"]
     wall_span = (
-        scene.room_width_m
+        stabilized_scene.room_width_m
         if int(normalize_angle_deg(window.orientation_deg)) in (0, 180)
-        else scene.room_depth_m
+        else stabilized_scene.room_depth_m
     )
     center_ratio = float((window.metadata or {}).get("center_ratio", 0.5))
     if wall_span > 0:
@@ -486,8 +524,8 @@ def scene_to_request(
 
     room = replace(
         base_request.room,
-        width_m=scene.room_width_m,
-        depth_m=scene.room_depth_m,
+        width_m=stabilized_scene.room_width_m,
+        depth_m=stabilized_scene.room_depth_m,
     )
     window_config = replace(
         base_request.window,

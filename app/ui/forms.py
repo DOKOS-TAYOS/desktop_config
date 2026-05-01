@@ -26,6 +26,7 @@ from app.ui.presets import (
     apply_presets,
     default_sidebar_state,
 )
+from app.utils.geometry import normalize_angle_deg
 from app.utils.logging_utils import get_logger, log_event
 
 
@@ -44,6 +45,33 @@ class SidebarSubmission:
 
 def _compass_label(value: int, language: LanguageCode) -> str:
     return translate_compass(value, language)
+
+
+def _window_center_ratio_bounds(
+    *,
+    room_width_m: float,
+    room_depth_m: float,
+    window_orientation_deg: float,
+    window_width_m: float,
+) -> tuple[float, float]:
+    wall_span = (
+        room_width_m
+        if normalize_angle_deg(window_orientation_deg) in (0, 180)
+        else room_depth_m
+    )
+    if wall_span <= 0:
+        return 0.0, 1.0
+    half_ratio = min(max(window_width_m / 2 / wall_span, 0.0), 0.5)
+    return half_ratio, 1.0 - half_ratio
+
+
+def _clamp_window_center_ratio_for_slider(
+    *,
+    current_ratio: float,
+    min_ratio: float,
+    max_ratio: float,
+) -> float:
+    return min(max(current_ratio, min_ratio), max_ratio)
 
 
 def request_to_session_patch(request: AnalysisRequest) -> dict[str, object]:
@@ -286,10 +314,25 @@ def _render_advanced_numeric_controls(language: LanguageCode) -> None:
                 key="window_width_m",
             )
         with col2:
+            center_min_ratio, center_max_ratio = _window_center_ratio_bounds(
+                room_width_m=float(st.session_state["room_width_m"]),
+                room_depth_m=float(st.session_state["room_depth_m"]),
+                window_orientation_deg=float(
+                    st.session_state["window_orientation_deg"]
+                ),
+                window_width_m=float(st.session_state["window_width_m"]),
+            )
+            st.session_state["window_center_ratio"] = (
+                _clamp_window_center_ratio_for_slider(
+                    current_ratio=float(st.session_state["window_center_ratio"]),
+                    min_ratio=float(center_min_ratio),
+                    max_ratio=float(center_max_ratio),
+                )
+            )
             st.slider(
                 "Centro de la ventana" if language == "es" else "Window center",
-                min_value=0.1,
-                max_value=0.9,
+                min_value=float(center_min_ratio),
+                max_value=float(center_max_ratio),
                 step=0.01,
                 key="window_center_ratio",
             )
@@ -462,8 +505,7 @@ def render_sidebar(language: LanguageCode = "es") -> SidebarSubmission:
             type="primary",
             width="stretch",
         )
-        auto_run = "current_result" not in st.session_state
-        should_build_request = run_requested or auto_run or preset_applied
+        should_build_request = run_requested or preset_applied
         if not should_build_request:
             return SidebarSubmission(
                 request=None,
@@ -481,7 +523,7 @@ def render_sidebar(language: LanguageCode = "es") -> SidebarSubmission:
             )
             return SidebarSubmission(
                 request=None,
-                run_requested=True,
+                run_requested=run_requested,
                 use_live_weather=bool(st.session_state["use_live_weather"]),
                 error=str(exc),
             )
@@ -494,7 +536,7 @@ def render_sidebar(language: LanguageCode = "es") -> SidebarSubmission:
         )
         return SidebarSubmission(
             request=request,
-            run_requested=True,
+            run_requested=run_requested,
             use_live_weather=bool(st.session_state["use_live_weather"]),
             location_label=request.location.label,
         )

@@ -120,8 +120,9 @@ LICENSE
 - pandas
 - numpy
 - pvlib
-- requests
 - pytest
+
+Weather HTTP access uses Python's standard-library `urllib`, while Streamlit still brings its own transitive networking dependencies.
 
 ## How the model works
 
