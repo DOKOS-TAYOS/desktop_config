@@ -7,6 +7,7 @@
 - Added `THIRD_PARTY_LICENSES.md` with a reviewed inventory of installed Python dependencies and their reported licenses.
 - Documented that the repository license is MIT, while the installed dependency set includes one weak-copyleft package (`certifi`, `MPL-2.0`), so not every installed dependency is permissive.
 - Replaced the app's direct `requests` usage with standard-library `urllib` for Open-Meteo calls and removed `requests` from the direct dependency list, while documenting that `streamlit` still installs it transitively.
+- Reworked the `README` so the public repository explains more clearly what the app does, who it is for, how to use it, and how to interpret the results.
 
 ## 2026-04-30
 

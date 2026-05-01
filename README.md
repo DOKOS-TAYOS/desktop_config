@@ -4,6 +4,10 @@ SunSetup Planner is a Streamlit app that helps people who work or study in front
 
 The goal is practical guidance, not fake precision. The model is deliberately transparent: rectangular room in plan view, one main window, one desk, one monitor, real solar position, and human-readable heuristics for glare, heat, and comfort.
 
+## In one sentence
+
+You describe a room, place the window, desk, and monitor, and the app tells you when that setup is comfortable and how to improve it.
+
 ## Why it exists
 
 Many home-office setups fail in very predictable ways:
@@ -25,6 +29,20 @@ This project turns those tradeoffs into a simple, explainable planning tool.
 - Uses Open-Meteo when forecast data is available and falls back to a theoretical clear-sky model when it is not.
 - Includes an in-app language switch so the public app can be used in Spanish or English.
 
+## Who it is for
+
+- People setting up a home office or study space.
+- Users comparing room layouts before moving furniture.
+- Anyone who wants a reasonable daylight and glare check without learning a CAD or lighting-simulation tool.
+
+## What the app gives you
+
+- A visual 2D editor of the room.
+- A daily risk timeline across the selected date.
+- A current-layout score for glare, heat, and ergonomics.
+- A recommended alternative layout when the current one can be improved.
+- A short diagnosis in plain language to explain the main problem.
+
 ## Main UX
 
 - The main panel starts with an interactive 2D floor-plan editor.
@@ -32,6 +50,27 @@ This project turns those tradeoffs into a simple, explainable planning tool.
 - The sidebar is reserved for location, date, weather, presets, and advanced numeric fallback controls.
 - The analysis reruns when the gesture is committed, not on every drag frame.
 - The result charts are intentionally static to avoid confusing less technical users with zoom, pan, or toolbar controls.
+
+## How to use the app
+
+1. Open the app and choose the interface language.
+2. Enter your city, or type the latitude and longitude manually.
+3. Set the room size and place the main window on the correct wall.
+4. Move and rotate the desk and monitor in the editor until they roughly match the real room.
+5. Pick the date you care about most, for example a summer afternoon or winter morning.
+6. Press `Update analysis` to compute the results.
+7. Read the diagnosis, timeline, and comparison panels.
+8. If the app proposes a better layout, compare it with your current one and decide whether the suggested movement is realistic in your room.
+
+## How to read the results
+
+- `comfort_score`: overall convenience of the setup for the selected day.
+- `glare_score`: risk of reflections or uncomfortable backlighting on the screen.
+- `heat_score`: risk of direct solar exposure on the desk area.
+- `ergonomic_score`: daylight orientation and monitor/desk placement quality.
+- `Current vs recommended`: the most practical summary if you only want to know whether moving the setup is worth it.
+
+This is a planning tool, not a scientific certification. A result is most useful as a comparative guide between two or three plausible layouts.
 
 ## MVP scope
 
@@ -54,6 +93,15 @@ streamlit run streamlit_app.py
 ```
 
 Recommended target runtime: Python 3.11+. The project was verified in this workspace with Python 3.12 and keeps the code compatible with Python 3.11 features.
+
+If you are on Windows PowerShell, a typical first run looks like this:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
 
 ### Run tests
 
@@ -204,6 +252,14 @@ SunSetup Planner ayuda a decidir dónde colocar mesa y monitor dentro de una hab
 - Comparador entre configuración actual y recomendada.
 - Plano 2D, timeline y recomendaciones accionables.
 - Selector visible de idioma entre español e inglés.
+
+### Cómo se usa
+
+1. Indica ciudad o coordenadas.
+2. Dibuja la habitación en el editor y coloca ventana, mesa y monitor.
+3. Elige fecha.
+4. Pulsa `Update analysis`.
+5. Revisa diagnóstico, timeline y propuesta recomendada.
 
 ### Lo importante sobre la precisión
 
