@@ -12,6 +12,8 @@ from urllib.request import urlopen
 from app.domain.models import LocationInput, WeatherContext, WeatherSample
 from app.utils.config import (
     FORECAST_TEMPERATURE_C,
+    MAX_GEOCODE_QUERY_LENGTH,
+    MAX_WEATHER_RESPONSE_BYTES,
     THEORETICAL_DIRECT_RADIATION_WM2,
     WEATHER_TIMEOUT_SECONDS,
 )
@@ -21,7 +23,7 @@ from app.utils.logging_utils import get_logger, log_event
 logger = get_logger(__name__)
 
 
-def _float_or_default(value, default: float) -> float:
+def _float_or_default(value: str | int | float | None, default: float) -> float:
     if value is None:
         return default
     try:
@@ -44,11 +46,29 @@ def _fetch_json(url: str, params: dict[str, str | int | float]) -> dict[str, Any
     query_string = urlencode(params)
     request_url = f"{url}?{query_string}"
     with urlopen(request_url, timeout=WEATHER_TIMEOUT_SECONDS) as response:
-        return json.loads(response.read().decode("utf-8"))
+        status = int(getattr(response, "status", 200))
+        if status >= 400:
+            raise URLError(f"HTTP {status} from weather service.")
+        raw_payload = response.read(MAX_WEATHER_RESPONSE_BYTES + 1)
+
+    if len(raw_payload) > MAX_WEATHER_RESPONSE_BYTES:
+        raise URLError("Weather service response exceeded the safe size limit.")
+    try:
+        payload = json.loads(raw_payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise URLError(f"Weather service returned invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise URLError("Weather service response must be a JSON object.")
+    return payload
 
 
 @lru_cache(maxsize=64)
 def geocode_city(query: str) -> LocationInput | None:
+    query = " ".join(query.strip().split())
+    if not query:
+        log_event(logger, logging.WARNING, "geocode_empty_query")
+        return None
+    query = query[:MAX_GEOCODE_QUERY_LENGTH]
     try:
         payload = _fetch_json(
             "https://geocoding-api.open-meteo.com/v1/search",

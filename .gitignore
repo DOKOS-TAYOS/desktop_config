@@ -11,7 +11,12 @@ pytest-cache-files-*/
 htmlcov/
 .DS_Store
 Thumbs.db
+.env
+.env.*
+!.env.example
 .streamlit/secrets.toml
+*.pem
+*.key
 dist/
 build/
 .tmp/

@@ -94,6 +94,12 @@ streamlit run streamlit_app.py
 
 Recommended target runtime: Python 3.11+. The project was verified in this workspace with Python 3.12 and keeps the code compatible with Python 3.11 features.
 
+For local development, install the development tools as well:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 If you are on Windows PowerShell, a typical first run looks like this:
 
 ```powershell
@@ -107,6 +113,15 @@ streamlit run streamlit_app.py
 
 ```bash
 pytest
+```
+
+### Run formatting, type, and security checks
+
+```bash
+ruff check .
+ruff format . --check
+pyright
+pip-audit --local
 ```
 
 ### Run type checks
@@ -156,6 +171,8 @@ tests/
 assets/
 .streamlit/config.toml
 requirements.txt
+requirements-dev.txt
+.github/
 README.md
 LICENSE
 ```
@@ -168,9 +185,23 @@ LICENSE
 - pandas
 - numpy
 - pvlib
+
+Development tooling:
+
 - pytest
+- Ruff
+- Pyright
+- pip-audit
 
 Weather HTTP access uses Python's standard-library `urllib`, while Streamlit still brings its own transitive networking dependencies.
+
+## Security posture
+
+- Production dependencies are pinned in `requirements.txt`; development-only tools live in `requirements-dev.txt`, so Streamlit Community Cloud installs a smaller runtime dependency set.
+- No secrets are required for the default public app. If secrets are added later, keep `.streamlit/secrets.toml` and `.env*` files out of git and use Streamlit Community Cloud's app settings.
+- Dependabot is configured for Python dependencies and GitHub Actions in `.github/dependabot.yml`.
+- The GitHub Actions security workflow runs Ruff, Pyright, pytest, Dependency Review on pull requests, and `pip-audit` on the installed dependency environment.
+- Keep these GitHub repository settings enabled: Dependency Graph, Dependabot alerts, Dependabot security updates, code scanning default setup, and secret scanning/push protection when available for the repo.
 
 ## How the model works
 
@@ -214,6 +245,7 @@ Deployment notes:
 - `.streamlit/config.toml` is already in the repository root, which is the correct location for Streamlit app configuration.
 - No `packages.txt` is required for the current dependency set.
 - No secrets are required for the default public deployment.
+- Only `requirements.txt` is used for the deployed app. `requirements-dev.txt` is for local checks and GitHub Actions.
 
 ## Limitations
 

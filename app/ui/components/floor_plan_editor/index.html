@@ -214,6 +214,13 @@
       const DESK_MIN_DEPTH_M = 0.5;
       const WINDOW_MIN_WIDTH_M = 0.6;
       const MONITOR_EDGE_MARGIN_M = 0.03;
+      const STREAMLIT_TARGET_ORIGIN = (() => {
+        try {
+          return document.referrer ? new URL(document.referrer).origin : "*";
+        } catch {
+          return "*";
+        }
+      })();
 
       function postMessageToStreamlit(payload) {
         window.parent.postMessage(
@@ -221,7 +228,7 @@
             isStreamlitMessage: true,
             ...payload,
           },
-          "*"
+          STREAMLIT_TARGET_ORIGIN
         );
       }
 
@@ -1362,6 +1369,12 @@
       }
 
       window.addEventListener("message", (event) => {
+        if (event.source !== window.parent) {
+          return;
+        }
+        if (STREAMLIT_TARGET_ORIGIN !== "*" && event.origin !== STREAMLIT_TARGET_ORIGIN) {
+          return;
+        }
         if (!event.data || event.data.type !== "streamlit:render") {
           return;
         }
