@@ -1,5 +1,5 @@
-streamlit==1.55.0
-plotly==6.6.0
-pandas==2.3.3
-numpy==2.4.3
-pvlib==0.15.0
+streamlit==1.57.0
+plotly==6.7.0
+pandas==3.0.3
+numpy==2.4.5
+pvlib==0.15.1
