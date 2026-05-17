@@ -112,16 +112,16 @@ streamlit run streamlit_app.py
 ### Run tests
 
 ```bash
-pytest
+python -m pytest
 ```
 
 ### Run formatting, type, and security checks
 
 ```bash
-ruff check .
-ruff format . --check
-pyright
-pip-audit --local
+python -m ruff check .
+python -m ruff format . --check
+python -m pyright
+python -m pip_audit --local
 ```
 
 ### Run type checks

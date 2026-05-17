@@ -57,16 +57,16 @@ jobs:
           .venv/bin/python -m pip install -r requirements-dev.txt
 
       - name: Ruff lint
-        run: .venv/bin/ruff check .
+        run: .venv/bin/python -m ruff check .
 
       - name: Ruff format check
-        run: .venv/bin/ruff format . --check
+        run: .venv/bin/python -m ruff format . --check
 
       - name: Pyright
-        run: .venv/bin/pyright
+        run: .venv/bin/python -m pyright
 
       - name: Pytest
-        run: .venv/bin/pytest
+        run: .venv/bin/python -m pytest
 
   dependency-audit:
     name: Python dependency audit

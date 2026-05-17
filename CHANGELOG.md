@@ -5,6 +5,8 @@
 - Added Dependabot configuration for pinned Python dependencies and GitHub Actions.
 - Added a GitHub Actions security workflow with Ruff, Pyright, pytest, Dependency Review, and `pip-audit` against the installed dependency environment.
 - Moved `pytest` out of the Streamlit production requirements into `requirements-dev.txt` to reduce the deployed dependency surface.
+- Updated the pinned development `pytest` version to `9.0.3` to pick up the CVE-2025-71176 fix.
+- Switched the GitHub Actions pytest command to `python -m pytest` so `app.*` imports resolve consistently on Linux runners.
 - Hardened Open-Meteo response handling with a response-size limit, JSON validation, and empty geocoding-query short-circuiting.
 - Restricted the custom Streamlit component message listener to the parent Streamlit frame origin where available.
 - Expanded git ignores for local environment files and private key material, and documented the repo's security posture.
